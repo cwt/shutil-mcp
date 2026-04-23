@@ -22,6 +22,7 @@ This project offers a set of file system tools designed for AI agents, returning
 - `chown`: Change file/directory ownership.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
+- `cat`: Read file content, optionally limited to a specific line range.
 - `make_archive`: Create archive files (zip, tar, etc.).
 - `unpack_archive`: Unpack archive files.
 - `get_archive_formats`: List supported archive formats.

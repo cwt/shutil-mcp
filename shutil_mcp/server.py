@@ -71,6 +71,7 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `chown`: Change file/directory ownership.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
+- `cat`: Read file content, optionally limited to a specific line range.
 - `make_archive`: Create archive files (zip, tar, etc.).
 - `unpack_archive`: Unpack archive files.
 

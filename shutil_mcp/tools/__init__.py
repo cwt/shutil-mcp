@@ -9,6 +9,7 @@ from shutil_mcp.tools.archive import (
     unpack_archive,
 )
 from shutil_mcp.tools.file_ops import (
+    cat,
     chmod,
     chown,
     cp,
@@ -30,6 +31,7 @@ __all__ = [
     "chmod",
     "chown",
     "which",
+    "cat",
     "make_archive",
     "unpack_archive",
     "get_archive_formats",

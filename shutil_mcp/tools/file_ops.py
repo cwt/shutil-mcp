@@ -1,8 +1,9 @@
 """File operations tools.
 
-Provides 'cp', 'mv', 'rm', 'chown', 'chmod', and 'which' tools.
+Provides 'cp', 'mv', 'rm', 'chown', 'chmod', 'which', and 'cat' tools.
 """
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -192,3 +193,56 @@ async def which(cmd: str, path: str | None = None) -> list[TextContent]:
         },
         separators=(",", ":"),
     )  # type: ignore[return-value]
+
+
+def _read_file_lines(
+    filepath: Path, start_line: int | None, end_line: int | None
+) -> str:
+    """Read file content, optionally limited to a line range."""
+    with open(filepath, encoding="utf-8", errors="replace") as f:
+        if start_line is None and end_line is None:
+            return f.read()
+        lines: list[str] = []
+        for i, line in enumerate(f, 1):
+            if start_line and i < start_line:
+                continue
+            if end_line and i > end_line:
+                break
+            lines.append(line)
+        return "".join(lines)
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
+async def cat(
+    path: str,
+    start_line: int | None = None,
+    end_line: int | None = None,
+) -> list[TextContent]:
+    """Read file content, optionally limited to a specific line range.
+
+    Args:
+        path: File path to read
+        start_line: First line to include (1-based, inclusive). None for start of file.
+        end_line: Last line to include (1-based, inclusive). None for end of file.
+    """
+    target = validate_path(path)
+    if target.is_dir():
+        raise ValueError(f"Cannot read directory: {target}")
+
+    loop = asyncio.get_running_loop()
+    content = await loop.run_in_executor(
+        None, _read_file_lines, target, start_line, end_line
+    )
+
+    result: dict[str, object] = {
+        "operation": "cat",
+        "path": str(target),
+        "status": "success",
+        "content": content,
+    }
+    if start_line is not None or end_line is not None:
+        result["lines"] = f"{start_line or 1}-{end_line or 'end'}"
+
+    return json.dumps(result, separators=(",", ":"))  # type: ignore[return-value]
