@@ -24,6 +24,9 @@ from shutil_mcp.tools import (  # noqa: F401
     mkdir,
     mv,
     rm,
+    stat,
+    touch,
+    tree,
     unpack_archive,
     which,
 )

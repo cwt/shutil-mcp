@@ -224,6 +224,33 @@ async def mkdir(path: str, parents: bool = True) -> list[TextContent]:
     )  # type: ignore[return-value]
 
 
+@mcp.tool()
+@handle_errors
+@json_tool
+async def touch(path: str) -> list[TextContent]:
+    """Create an empty file or update file timestamps.
+
+    Args:
+        path: File path to create or update
+    """
+    target = Path(path).absolute()
+    target = validate_path_in_jail(target)
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None, lambda: target.touch(exist_ok=True)
+    )
+
+    return json.dumps(
+        {
+            "operation": "touch",
+            "path": str(target),
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
 def _read_file_lines(
     filepath: Path, start_line: int | None, end_line: int | None
 ) -> str:

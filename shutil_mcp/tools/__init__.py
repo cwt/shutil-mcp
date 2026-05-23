@@ -16,30 +16,36 @@ from shutil_mcp.tools.file_ops import (
     mkdir,
     mv,
     rm,
+    touch,
     which,
 )
 from shutil_mcp.tools.listing import (
     disk_usage,
     ls,
+    stat,
 )
 from shutil_mcp.tools.search import (
     glob,
     grep,
+    tree,
 )
 
 __all__ = [
     "ls",
+    "stat",
     "disk_usage",
     "cp",
     "mv",
     "rm",
     "mkdir",
+    "touch",
     "chmod",
     "chown",
     "which",
     "cat",
     "glob",
     "grep",
+    "tree",
     "make_archive",
     "unpack_archive",
     "get_archive_formats",

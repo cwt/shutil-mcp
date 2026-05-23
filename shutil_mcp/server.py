@@ -68,13 +68,16 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `mv`: Move/rename files or directories.
 - `rm`: Remove files or directories recursively.
 - `mkdir`: Create a new directory.
+- `touch`: Create an empty file or update file timestamps.
 - `chmod`: Change file/directory permissions.
 - `chown`: Change file/directory ownership.
+- `stat`: Get detailed file or directory metadata.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
 - `cat`: Read file content, optionally limited to a specific line range.
 - `glob`: Find files matching glob patterns.
 - `grep`: Search file contents using regex patterns.
+- `tree`: Get a recursive directory tree as nested JSON.
 - `make_archive`: Create archive files (zip, tar, etc.).
 - `unpack_archive`: Unpack archive files.
 

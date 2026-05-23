@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from shutil_mcp.tools.listing import disk_usage, ls
+from shutil_mcp.tools.listing import disk_usage, ls, stat
 
 
 @pytest.mark.asyncio
@@ -44,3 +44,26 @@ async def test_disk_usage(tmp_path: Path) -> None:
     assert "used" in data
     assert "free" in data
     assert data["path"] == str(tmp_path.absolute())
+
+
+@pytest.mark.asyncio
+async def test_stat_file(tmp_path: Path) -> None:
+    test_file = tmp_path / "test.txt"
+    test_file.write_text("hello world")
+
+    result = await stat(str(test_file))
+    data = json.loads(result[0].text)
+
+    assert data["type"] == "file"
+    assert data["size"] == 11
+    assert "mode" in data
+    assert "mtime" in data
+    assert "inode" in data
+
+
+@pytest.mark.asyncio
+async def test_stat_directory(tmp_path: Path) -> None:
+    result = await stat(str(tmp_path))
+    data = json.loads(result[0].text)
+
+    assert data["type"] == "directory"

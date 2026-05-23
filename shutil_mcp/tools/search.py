@@ -130,3 +130,76 @@ async def grep(
     )  # type: ignore[return-value]
 
 
+@mcp.tool()
+@handle_errors
+@json_tool
+async def tree(
+    path: str = ".",
+    max_depth: int | None = None,
+) -> list[TextContent]:
+    """Get a recursive directory tree as nested JSON.
+
+    Args:
+        path: Root directory to start from (default: '.')
+        max_depth: Maximum depth to traverse (default: None = unlimited)
+    """
+    root = validate_dir_path(path)
+
+    def _build_tree(
+        dir_path: Path, depth: int = 0
+    ) -> dict[str, object]:
+        if max_depth is not None and depth > max_depth:
+            return {"name": dir_path.name, "type": "directory", "truncated": True}
+
+        entries: list[dict[str, object]] = []
+        try:
+            def _sort_key(p: Path) -> tuple[bool, str]:
+                return (not p.is_dir(follow_symlinks=False), p.name)
+            for entry in sorted(dir_path.iterdir(), key=_sort_key):
+                try:
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    is_symlink = entry.is_symlink()
+                except Exception:
+                    continue
+
+                if is_dir:
+                    entries.append(_build_tree(entry, depth + 1))
+                else:
+                    e: dict[str, object] = {
+                        "name": entry.name,
+                        "type": "symlink" if is_symlink else "file",
+                    }
+                    try:
+                        e["size"] = entry.stat(follow_symlinks=False).st_size
+                    except Exception:
+                        pass
+                    entries.append(e)
+        except PermissionError:
+            return {
+                "name": dir_path.name,
+                "type": "directory",
+                "error": "permission_denied",
+            }
+
+        return {
+            "name": dir_path.name,
+            "type": "directory",
+            "children": entries,
+        }
+
+    loop = asyncio.get_running_loop()
+    result = await loop.run_in_executor(
+        None, lambda: _build_tree(root)
+    )
+
+    return json.dumps(
+        {
+            "operation": "tree",
+            "root": str(root),
+            "tree": result,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+

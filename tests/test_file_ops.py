@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from shutil_mcp.tools.file_ops import cat, cp, mkdir, mv, rm, which
+from shutil_mcp.tools.file_ops import cat, cp, mkdir, mv, rm, touch, which
 
 
 @pytest.mark.asyncio
@@ -248,3 +248,29 @@ async def test_mkdir_existing(tmp_path: Path) -> None:
 
     assert data["status"] == "success"
     assert existing.exists()
+
+
+@pytest.mark.asyncio
+async def test_touch_create(tmp_path: Path) -> None:
+    new_file = tmp_path / "new.txt"
+
+    result = await touch(str(new_file))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "touch"
+    assert new_file.exists()
+    assert new_file.stat().st_size == 0
+
+
+@pytest.mark.asyncio
+async def test_touch_existing(tmp_path: Path) -> None:
+    existing = tmp_path / "existing.txt"
+    existing.write_text("content")
+
+    result = await touch(str(existing))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert existing.exists()
+    assert existing.read_text() == "content"

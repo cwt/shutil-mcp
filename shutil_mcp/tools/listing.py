@@ -5,7 +5,7 @@ Provides 'ls' and 'disk_usage' tools with JSON output for AI agents.
 
 import json
 import os
-import stat
+import stat as stat_module
 from datetime import datetime
 from typing import Any
 
@@ -38,11 +38,11 @@ async def ls(path: str = ".") -> list[TextContent]:
             mode = s.st_mode
 
             # Determine entry type
-            if stat.S_ISDIR(mode):
+            if stat_module.S_ISDIR(mode):
                 entry_type = "directory"
-            elif stat.S_ISLNK(mode):
+            elif stat_module.S_ISLNK(mode):
                 entry_type = "symlink"
-            elif stat.S_ISREG(mode):
+            elif stat_module.S_ISREG(mode):
                 entry_type = "file"
             else:
                 entry_type = "other"
@@ -53,7 +53,7 @@ async def ls(path: str = ".") -> list[TextContent]:
                     "type": entry_type,
                     "size": s.st_size,
                     "mtime": datetime.fromtimestamp(s.st_mtime).isoformat(),
-                    "mode": oct(stat.S_IMODE(mode)),
+                    "mode": oct(stat_module.S_IMODE(mode)),
                     "owner": s.st_uid,
                     "group": s.st_gid,
                 }
@@ -97,3 +97,60 @@ async def disk_usage(path: str = ".") -> list[TextContent]:
         },
         separators=(",", ":"),
     )  # type: ignore[return-value]
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
+async def stat(
+    path: str,
+) -> list[TextContent]:
+    """Get detailed file or directory metadata.
+
+    Args:
+        path: Path to the file or directory
+    """
+    target = validate_path(path)
+    import asyncio
+
+    loop = asyncio.get_running_loop()
+
+    def _stat() -> dict[str, object]:
+        s = os.stat(target, follow_symlinks=True)
+        mode = s.st_mode
+
+        if stat_module.S_ISDIR(mode):
+            entry_type = "directory"
+        elif stat_module.S_ISLNK(mode):
+            entry_type = "symlink"
+        elif stat_module.S_ISREG(mode):
+            entry_type = "file"
+        elif stat_module.S_ISFIFO(mode):
+            entry_type = "fifo"
+        elif stat_module.S_ISSOCK(mode):
+            entry_type = "socket"
+        elif stat_module.S_ISBLK(mode):
+            entry_type = "block_device"
+        elif stat_module.S_ISCHR(mode):
+            entry_type = "char_device"
+        else:
+            entry_type = "other"
+
+        return {
+            "path": str(target),
+            "type": entry_type,
+            "size": s.st_size,
+            "mode": oct(stat_module.S_IMODE(mode)),
+            "owner": s.st_uid,
+            "group": s.st_gid,
+            "atime": datetime.fromtimestamp(s.st_atime).isoformat(),
+            "mtime": datetime.fromtimestamp(s.st_mtime).isoformat(),
+            "ctime": datetime.fromtimestamp(s.st_ctime).isoformat(),
+            "device": s.st_dev,
+            "inode": s.st_ino,
+            "nlink": s.st_nlink,
+        }
+
+    result = await loop.run_in_executor(None, _stat)
+
+    return json.dumps(result, separators=(",", ":"))  # type: ignore[return-value]

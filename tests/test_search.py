@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from shutil_mcp.tools.search import glob, grep
+from shutil_mcp.tools.search import glob, grep, tree
 
 pytestmark = pytest.mark.asyncio
 
@@ -162,3 +162,44 @@ async def test_grep_invalid_regex(tmp_path: Path) -> None:
     result = await grep(r"[invalid", path=str(tmp_path))
     text = result[0].text
     assert text.startswith("Error:")
+
+
+async def test_tree_basic(tmp_path: Path) -> None:
+    (tmp_path / "a.txt").write_text("hello")
+    (tmp_path / "b.txt").write_text("world")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "c.txt").write_text("deep")
+
+    result = await tree(str(tmp_path))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "tree"
+    children = data["tree"]["children"]
+    assert len(children) == 3
+    names = {c["name"] for c in children}
+    assert names == {"a.txt", "b.txt", "sub"}
+
+
+async def test_tree_max_depth(tmp_path: Path) -> None:
+    sub1 = tmp_path / "a" / "b" / "c"
+    sub1.mkdir(parents=True)
+    (sub1 / "deep.txt").write_text("x")
+
+    result = await tree(str(tmp_path), max_depth=1)
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["tree"]["children"][0]["children"][0].get("truncated") is True
+
+
+async def test_tree_file_sizes(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("x" * 100)
+
+    result = await tree(str(tmp_path))
+    data = json.loads(result[0].text)
+
+    child = data["tree"]["children"][0]
+    assert child["name"] == "f.txt"
+    assert child["size"] == 100
