@@ -13,6 +13,7 @@ from shutil_mcp.tools.file_ops import (
     chmod,
     chown,
     cp,
+    mkdir,
     mv,
     rm,
     which,
@@ -21,6 +22,10 @@ from shutil_mcp.tools.listing import (
     disk_usage,
     ls,
 )
+from shutil_mcp.tools.search import (
+    glob,
+    grep,
+)
 
 __all__ = [
     "ls",
@@ -28,10 +33,13 @@ __all__ = [
     "cp",
     "mv",
     "rm",
+    "mkdir",
     "chmod",
     "chown",
     "which",
     "cat",
+    "glob",
+    "grep",
     "make_archive",
     "unpack_archive",
     "get_archive_formats",

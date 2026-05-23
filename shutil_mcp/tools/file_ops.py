@@ -195,6 +195,35 @@ async def which(cmd: str, path: str | None = None) -> list[TextContent]:
     )  # type: ignore[return-value]
 
 
+@mcp.tool()
+@handle_errors
+@json_tool
+async def mkdir(path: str, parents: bool = True) -> list[TextContent]:
+    """Create a directory.
+
+    Args:
+        path: Directory path to create
+        parents: Create parent directories if they don't exist (default: True)
+    """
+    target = Path(path).absolute()
+    target = validate_path_in_jail(target)
+
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(
+        None, lambda: target.mkdir(parents=parents, exist_ok=True)
+    )
+
+    return json.dumps(
+        {
+            "operation": "mkdir",
+            "path": str(target),
+            "parents": parents,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
 def _read_file_lines(
     filepath: Path, start_line: int | None, end_line: int | None
 ) -> str:

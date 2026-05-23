@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from shutil_mcp.tools.file_ops import cat, cp, mv, rm, which
+from shutil_mcp.tools.file_ops import cat, cp, mkdir, mv, rm, which
 
 
 @pytest.mark.asyncio
@@ -211,3 +211,40 @@ async def test_cat_last_line_only(tmp_path: Path) -> None:
     data = json.loads(result[0].text)
     assert data["status"] == "success"
     assert data["content"] == "line3\n"
+
+
+@pytest.mark.asyncio
+async def test_mkdir_basic(tmp_path: Path) -> None:
+    new_dir = tmp_path / "newdir"
+
+    result = await mkdir(str(new_dir))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "mkdir"
+    assert new_dir.exists()
+    assert new_dir.is_dir()
+
+
+@pytest.mark.asyncio
+async def test_mkdir_with_parents(tmp_path: Path) -> None:
+    nested = tmp_path / "a" / "b" / "c"
+
+    result = await mkdir(str(nested), parents=True)
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert nested.exists()
+    assert nested.is_dir()
+
+
+@pytest.mark.asyncio
+async def test_mkdir_existing(tmp_path: Path) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+
+    result = await mkdir(str(existing), parents=True)
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert existing.exists()

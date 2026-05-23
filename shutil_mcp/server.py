@@ -67,11 +67,14 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `cp`: Copy files or directories recursively.
 - `mv`: Move/rename files or directories.
 - `rm`: Remove files or directories recursively.
+- `mkdir`: Create a new directory.
 - `chmod`: Change file/directory permissions.
 - `chown`: Change file/directory ownership.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
 - `cat`: Read file content, optionally limited to a specific line range.
+- `glob`: Find files matching glob patterns.
+- `grep`: Search file contents using regex patterns.
 - `make_archive`: Create archive files (zip, tar, etc.).
 - `unpack_archive`: Unpack archive files.
 
