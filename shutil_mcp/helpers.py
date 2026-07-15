@@ -92,7 +92,10 @@ def validate_path_in_jail(path: Path) -> Path:
         # but absolute() + normalpath is a good fallback.
         # For security, we really want existing paths to be resolved.
     except Exception:
-        resolved = path.absolute()
+        # Fallback: use realpath which always follows symlinks
+        import os
+
+        resolved = Path(os.path.realpath(str(path)))
 
     try:
         resolved.relative_to(mcp.jail_path)

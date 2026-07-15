@@ -51,6 +51,7 @@ async def test_glob_default_path(tmp_path: Path) -> None:
     cwd = Path.cwd()
     try:
         import os
+
         os.chdir(tmp_path)
         result = await glob("*.py")
         data = json.loads(result[0].text)
@@ -195,6 +196,42 @@ async def test_tree_max_depth(tmp_path: Path) -> None:
 
 
 async def test_tree_file_sizes(tmp_path: Path) -> None:
+    (tmp_path / "f.txt").write_text("x" * 100)
+
+    result = await tree(str(tmp_path))
+    data = json.loads(result[0].text)
+
+    child = data["tree"]["children"][0]
+    assert child["name"] == "f.txt"
+    assert child["size"] == 100
+
+
+async def test_tree_symlink_cycle_detection(tmp_path: Path) -> None:
+    """Test that tree() handles symlink cycles without infinite recursion."""
+    target = tmp_path / "cycle" / "a"
+    target.mkdir(parents=True)
+    (target / "file.txt").write_text("test")
+
+    # Create a symlink that points back to its parent, forming a cycle
+    cycle_link = target / "cycle"
+    cycle_link.symlink_to("..")
+
+    result = await tree(str(tmp_path / "cycle" / "a"))
+    data = json.loads(result[0].text)
+
+    # Should not crash — should have detected cycle or truncated
+    assert data["status"] == "success"
+    # Verify we didn't recurse infinitely
+    children = data["tree"]["children"][0].get("children", [])
+    assert len(children) < 100  # Should not have recursed deeply
+
+
+async def test_tree_invalid_max_depth(tmp_path: Path) -> None:
+    """Test that tree() rejects negative max_depth values."""
+    result = await tree(str(tmp_path), max_depth=-1)
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "max_depth" in text.lower()
     (tmp_path / "f.txt").write_text("x" * 100)
 
     result = await tree(str(tmp_path))

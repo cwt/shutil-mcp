@@ -6,7 +6,9 @@ and searching within file contents.
 
 import asyncio
 import json
+import os
 import re
+import stat as stat_module
 from pathlib import Path
 
 from mcp.types import TextContent
@@ -90,6 +92,8 @@ async def grep(
                     if include and not p.match(include):
                         continue
                     files_to_search.append(p)
+        # Sort for deterministic results across platforms
+        files_to_search.sort()
 
         matches: list[dict[str, object]] = []
         for filepath in files_to_search:
@@ -145,32 +149,56 @@ async def tree(
     """
     root = validate_dir_path(path)
 
+    if max_depth is not None and max_depth < 0:
+        raise ValueError(f"max_depth must be >= 0, got {max_depth}")
+
     def _build_tree(
-        dir_path: Path, depth: int = 0
+        dir_path: Path, depth: int = 0, visited: set[Path] | None = None
     ) -> dict[str, object]:
         if max_depth is not None and depth > max_depth:
-            return {"name": dir_path.name, "type": "directory", "truncated": True}
+            return {
+                "name": dir_path.name,
+                "type": "directory",
+                "truncated": True,
+            }
+        if visited is None:
+            visited = set()
+        real_path = dir_path.resolve()
+        if real_path in visited:
+            return {
+                "name": dir_path.name,
+                "type": "directory",
+                "symlink_cycle": True,
+            }
+        visited = visited | {real_path}
 
         entries: list[dict[str, object]] = []
         try:
-            def _sort_key(p: Path) -> tuple[bool, str]:
-                return (not p.is_dir(follow_symlinks=False), p.name)
-            for entry in sorted(dir_path.iterdir(), key=_sort_key):
+            # Use os.listdir() + os.lstat() for mypy compatibility
+            paths = [Path(dir_path) / name for name in os.listdir(dir_path)]
+            for entry in sorted(
+                paths,
+                key=lambda p: (
+                    not os.path.isdir(p),
+                    p.name,
+                ),
+            ):
                 try:
-                    is_dir = entry.is_dir(follow_symlinks=False)
-                    is_symlink = entry.is_symlink()
+                    st = os.lstat(str(entry))
+                    is_dir = stat_module.S_ISDIR(st.st_mode)
+                    is_symlink = stat_module.S_ISLNK(st.st_mode)
                 except Exception:
                     continue
 
                 if is_dir:
-                    entries.append(_build_tree(entry, depth + 1))
+                    entries.append(_build_tree(entry, depth + 1, visited))
                 else:
                     e: dict[str, object] = {
                         "name": entry.name,
                         "type": "symlink" if is_symlink else "file",
                     }
                     try:
-                        e["size"] = entry.stat(follow_symlinks=False).st_size
+                        e["size"] = st.st_size
                     except Exception:
                         pass
                     entries.append(e)
@@ -188,9 +216,7 @@ async def tree(
         }
 
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None, lambda: _build_tree(root)
-    )
+    result = await loop.run_in_executor(None, lambda: _build_tree(root))
 
     return json.dumps(
         {
@@ -201,5 +227,3 @@ async def tree(
         },
         separators=(",", ":"),
     )  # type: ignore[return-value]
-
-

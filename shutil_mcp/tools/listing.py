@@ -34,7 +34,8 @@ async def ls(path: str = ".") -> list[TextContent]:
     def get_entries() -> list[dict[str, Any]]:
         entries = []
         for entry in os.scandir(dir_path):
-            s = entry.stat()
+            # Use os.lstat() to NOT follow symlinks - size reflects symlink itself (0), not target
+            s = os.lstat(entry.path)
             mode = s.st_mode
 
             # Determine entry type
@@ -62,8 +63,10 @@ async def ls(path: str = ".") -> list[TextContent]:
 
     entries = await loop.run_in_executor(None, get_entries)
 
-    # Sort entries: directories first, then files, both alphabetically
-    entries.sort(key=lambda x: (x["type"] != "directory", x["name"]))
+    # Sort entries: directories/symlinks first, then files, both alphabetically
+    entries.sort(
+        key=lambda x: (x["type"] not in ("directory", "symlink"), x["name"])
+    )
 
     return json.dumps(entries, separators=(",", ":"))  # type: ignore[return-value]
 

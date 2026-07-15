@@ -237,9 +237,7 @@ async def touch(path: str) -> list[TextContent]:
     target = validate_path_in_jail(target)
 
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None, lambda: target.touch(exist_ok=True)
-    )
+    await loop.run_in_executor(None, lambda: target.touch(exist_ok=True))
 
     return json.dumps(
         {
