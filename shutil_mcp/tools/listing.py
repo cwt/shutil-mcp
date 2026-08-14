@@ -31,39 +31,57 @@ async def ls(path: str = ".") -> list[TextContent]:
 
     loop = asyncio.get_running_loop()
 
+    def _entry_sort_key(item: dict[str, Any]) -> tuple[bool, str]:
+        return (item["type"] != "directory", item["name"])
+
     def get_entries() -> list[dict[str, Any]]:
-        entries = []
-        for entry in os.scandir(dir_path):
-            s = entry.stat()
-            mode = s.st_mode
+        entries: list[dict[str, Any]] = []
+        with os.scandir(dir_path) as scandir_it:
+            for entry in scandir_it:
+                try:
+                    is_symlink = entry.is_symlink()
+                except OSError:
+                    is_symlink = False
 
-            # Determine entry type
-            if stat_module.S_ISDIR(mode):
-                entry_type = "directory"
-            elif stat_module.S_ISLNK(mode):
-                entry_type = "symlink"
-            elif stat_module.S_ISREG(mode):
-                entry_type = "file"
-            else:
-                entry_type = "other"
+                if is_symlink:
+                    entry_type = "symlink"
+                elif entry.is_dir(follow_symlinks=False):
+                    entry_type = "directory"
+                elif entry.is_file(follow_symlinks=False):
+                    entry_type = "file"
+                else:
+                    entry_type = "other"
 
-            entries.append(
-                {
-                    "name": entry.name,
-                    "type": entry_type,
-                    "size": s.st_size,
-                    "mtime": datetime.fromtimestamp(s.st_mtime).isoformat(),
-                    "mode": oct(stat_module.S_IMODE(mode)),
-                    "owner": s.st_uid,
-                    "group": s.st_gid,
-                }
-            )
+                try:
+                    s = entry.stat(follow_symlinks=False)
+                    mode = s.st_mode
+                    size = s.st_size
+                    mtime = datetime.fromtimestamp(s.st_mtime).isoformat()
+                    oct_mode = oct(stat_module.S_IMODE(mode))
+                    owner = s.st_uid
+                    group = s.st_gid
+                except OSError:
+                    size = 0
+                    mtime = ""
+                    oct_mode = "0o0"
+                    owner = 0
+                    group = 0
+
+                entries.append(
+                    {
+                        "name": entry.name,
+                        "type": entry_type,
+                        "size": size,
+                        "mtime": mtime,
+                        "mode": oct_mode,
+                        "owner": owner,
+                        "group": group,
+                    }
+                )
         return entries
 
     entries = await loop.run_in_executor(None, get_entries)
-
-    # Sort entries: directories first, then files, both alphabetically
-    entries.sort(key=lambda x: (x["type"] != "directory", x["name"]))
+    entries.sort(key=_entry_sort_key)
 
     return json.dumps(entries, separators=(",", ":"))  # type: ignore[return-value]
 
