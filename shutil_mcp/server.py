@@ -57,26 +57,28 @@ Use these tools to perform file system operations asynchronously and precisely.
 - Path validation ensures all operations stay within allowed directory trees (jail).
 - All operations are asynchronous and use `aioshutil` where possible.
 
+**Safety, Integrity & Reversibility**
+- All paths are validated against a jail directory if configured.
+- Fault-tolerant moves: `mv` verifies destination integrity before deleting origin; if an error occurs, the source remains untouched.
+- Automatic rollback: `chmod` and `chown` automatically restore previous permissions/ownership if an operation fails.
+- Undo metadata: `chmod` and `chown` return `previous_mode` and `previous_user`/`previous_group` in the JSON response to enable 1-step undo.
+- Safe soft-deletion: Prefer `rm(..., trash=True)` for reversible deletions, which can be restored via the `restore` tool.
+- Overwrite protection: `cp`, `mv`, `restore`, `make_archive`, and `unpack_archive` support `overwrite=False` to prevent accidental data replacement.
+- Archive safety: `unpack_archive` checks against zip-slip and directory traversal attacks before extraction.
+
 **Best Practices**
 - Prefer these tools over raw shell commands (`ls`, `cp`, `mv`, `rm`) as they
   provide structured JSON output.
 - Use `ls` to explore directory contents before performing operations.
 - Use `disk_usage` to check available space before large copy or archive operations.
+- Use `trash=True` with `rm` when deleting files that might need recovery.
 - Always verify path existence and permissions before modifying files.
-
-**Safety & Security Layers**
-- All paths are validated against a jail directory if configured.
-- Verified safe operations: `mv` and `cp` verify destination data before removing origin.
-- Reversible permissions: `chmod` and `chown` record previous mode/ownership and rollback on error.
-- Soft-deletion: `rm` supports `trash=True` to stage deletions in `.trash` with `restore` capability.
-- Archive safety: `unpack_archive` validates all paths against zip-slip traversal attacks.
-- Dangerous operations should be used with caution; structured errors and verification are built-in.
 
 **Available Tools**
 - `ls`: List directory contents with detailed metadata in JSON format.
-- `cp`: Copy files or directories recursively with verification.
-- `mv`: Move/rename files or directories with safe verification before origin removal.
-- `rm`: Remove files or directories (supports soft-delete via trash=True).
+- `cp`: Copy files or directories recursively with verification and overwrite protection.
+- `mv`: Move/rename files or directories with destination verification and origin preservation on failure.
+- `rm`: Remove files or directories (supports reversible soft-delete via trash=True).
 - `restore`: Restore a soft-deleted file or directory from trash.
 - `mkdir`: Create a new directory.
 - `touch`: Create an empty file or update file timestamps.
@@ -91,6 +93,7 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `tree`: Get a recursive directory tree as nested JSON.
 - `make_archive`: Create archive files (zip, tar, etc.) with overwrite protection.
 - `unpack_archive`: Unpack archive files safely with zip-slip protection.
+- `get_archive_formats`: List supported archive formats.
 
 Be precise and always check your work by listing affected directories.""",
 )

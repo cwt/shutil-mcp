@@ -32,7 +32,7 @@ async def cp(
     follow_symlinks: bool = True,
     overwrite: bool = True,
 ) -> list[TextContent]:
-    """Copy files or directories recursively.
+    """Copy files or directories recursively with size verification and overwrite protection.
 
     Args:
         src: Source path
@@ -114,7 +114,10 @@ async def mv(
     dst: str,
     overwrite: bool = True,
 ) -> list[TextContent]:
-    """Move or rename files or directories with safety verification before origin removal.
+    """Move or rename files or directories with destination verification and fault tolerance.
+
+    Ensures the destination file is verified before deleting the origin. If any error
+    or failure occurs during the move, the original source file remains preserved intact.
 
     Args:
         src: Source path
@@ -343,7 +346,10 @@ async def restore(
 @handle_errors
 @json_tool
 async def chmod(path: str, mode: int | str) -> list[TextContent]:
-    """Change file or directory permissions with rollback on failure and previous mode tracking.
+    """Change file or directory permissions with automatic rollback on failure and previous mode tracking.
+
+    If the operation fails, permissions stay intact or rollback to the original state.
+    The response JSON includes 'previous_mode' to enable immediate 1-step undo.
 
     Args:
         path: Path to modify
@@ -400,7 +406,10 @@ async def chmod(path: str, mode: int | str) -> list[TextContent]:
 async def chown(
     path: str, user: str | int | None = None, group: str | int | None = None
 ) -> list[TextContent]:
-    """Change file or directory ownership with rollback on failure and previous ownership tracking.
+    """Change file or directory ownership with automatic rollback on failure and previous ownership tracking.
+
+    If the operation fails, ownership stays intact or rolls back to previous user and group.
+    The response JSON includes 'previous_user' and 'previous_group' to enable immediate 1-step undo.
 
     Args:
         path: Path to modify
