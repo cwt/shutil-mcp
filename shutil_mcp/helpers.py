@@ -72,10 +72,10 @@ def validate_path_in_jail(path: Path) -> Path:
     """Validate that a path is within the jail directory.
 
     Args:
-        path: The absolute path to validate.
+        path: The path to validate.
 
     Returns:
-        The resolved absolute Path object.
+        The validated Path object.
 
     Raises:
         ValueError: If jail is set and path is outside it.
@@ -85,27 +85,22 @@ def validate_path_in_jail(path: Path) -> Path:
     if mcp.jail_path is None:
         return path
 
-    # We use resolve() to handle '..' and symlinks for security
+    jail = mcp.jail_path.resolve()
+
     try:
         resolved = path.resolve()
-        # If path doesn't exist, resolve() might not resolve '..' properly on all systems
-        # but absolute() + normalpath is a good fallback.
-        # For security, we really want existing paths to be resolved.
     except Exception:
         resolved = path.absolute()
 
     try:
-        resolved.relative_to(mcp.jail_path)
+        resolved.relative_to(jail)
     except ValueError:
-        # Fallback check for cases where relative_to fails but it's actually inside
-        if str(resolved).startswith(str(mcp.jail_path)):
-            return resolved
         raise ValueError(
-            f"Path '{resolved}' is outside the allowed jail directory '{mcp.jail_path}'. "
-            f"Access is restricted to '{mcp.jail_path}' and its subdirectories."
+            f"Path '{path}' (resolved: '{resolved}') is outside the allowed jail directory '{jail}'. "
+            f"Access is restricted to '{jail}' and its subdirectories."
         )
 
-    return resolved
+    return path
 
 
 def setup_event_loop() -> None:
@@ -148,7 +143,7 @@ def validate_path(path_str: str, must_exist: bool = True) -> Path:
         must_exist: If True, raise ValueError if path doesn't exist.
 
     Returns:
-        The resolved absolute Path object.
+        The validated Path object.
 
     Raises:
         ValueError: If the path is invalid or outside jail.
@@ -162,7 +157,7 @@ def validate_path(path_str: str, must_exist: bool = True) -> Path:
     # Check jail restriction
     path = validate_path_in_jail(path)
 
-    if must_exist and not path.exists():
+    if must_exist and not (path.exists() or path.is_symlink()):
         raise ValueError(f"Path does not exist: {path}")
 
     return path

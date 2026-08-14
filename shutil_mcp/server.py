@@ -27,7 +27,7 @@ class SHUTIL_MCP(FastMCP):
         if value is None:
             return
 
-        new_path = Path(value).absolute()
+        new_path = Path(value).resolve()
         if self._jail_path is not None:
             if self._jail_path == new_path:
                 return
