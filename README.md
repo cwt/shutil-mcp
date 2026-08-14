@@ -55,7 +55,7 @@ shutil-mcp --transport sse --jail /path/to/projects --port 8000
 
 ## Development
 
-See [@DEVELOPMENT.md](@DEVELOPMENT.md) for detailed development instructions.
+See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development instructions.
 
 ## License
 
