@@ -93,7 +93,13 @@ async def rm(path: str, recursive: bool = False) -> list[TextContent]:
     """
     target = validate_path(path)
 
-    if target.is_dir():
+    if target.is_symlink():
+        import asyncio
+
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, os.unlink, target)
+        op_type = "symlink_removal"
+    elif target.is_dir():
         if not recursive:
             raise ValueError(
                 f"'{target}' is a directory. Use recursive=True to remove."
@@ -117,26 +123,37 @@ async def rm(path: str, recursive: bool = False) -> list[TextContent]:
 @mcp.tool()
 @handle_errors
 @json_tool
-async def chmod(path: str, mode: int) -> list[TextContent]:
+async def chmod(path: str, mode: int | str) -> list[TextContent]:
     """Change file or directory permissions.
 
     Args:
         path: Path to modify
-        mode: Numeric mode (octal, e.g., 0o755)
+        mode: Numeric mode (e.g., 0o755, 493, "755", "0755", "0o755")
     """
     target = validate_path(path)
+
+    if isinstance(mode, str):
+        mode_str = mode.strip()
+        if mode_str.startswith(("0o", "0O")):
+            numeric_mode = int(mode_str, 8)
+        elif len(mode_str) <= 4 and all(c in "01234567" for c in mode_str):
+            numeric_mode = int(mode_str, 8)
+        else:
+            numeric_mode = int(mode_str)
+    else:
+        numeric_mode = mode
 
     # Run in thread since os.chmod is blocking
     import asyncio
 
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, os.chmod, target, mode)
+    await loop.run_in_executor(None, os.chmod, target, numeric_mode)
 
     return json.dumps(
         {
             "operation": "chmod",
             "path": str(target),
-            "mode": oct(mode),
+            "mode": oct(numeric_mode),
             "status": "success",
         },
         separators=(",", ":"),
@@ -147,19 +164,24 @@ async def chmod(path: str, mode: int) -> list[TextContent]:
 @handle_errors
 @json_tool
 async def chown(
-    path: str, user: str | None = None, group: str | None = None
+    path: str, user: str | int | None = None, group: str | int | None = None
 ) -> list[TextContent]:
     """Change file or directory ownership.
 
     Args:
         path: Path to modify
-        user: Username or UID (default: None)
-        group: Group name or GID (default: None)
+        user: Username or numeric UID (default: None)
+        group: Group name or numeric GID (default: None)
     """
     target = validate_path(path)
 
+    final_user = int(user) if isinstance(user, str) and user.isdigit() else user
+    final_group = (
+        int(group) if isinstance(group, str) and group.isdigit() else group
+    )
+
     # Use type ignore if mypy stubs for aioshutil are incorrect
-    await aioshutil.chown(str(target), user=user, group=group)  # type: ignore[arg-type]
+    await aioshutil.chown(str(target), user=final_user, group=final_group)  # type: ignore[arg-type]
 
     return json.dumps(
         {
@@ -208,10 +230,11 @@ async def mkdir(path: str, parents: bool = True) -> list[TextContent]:
     target = Path(path).absolute()
     target = validate_path_in_jail(target)
 
+    def _create_dir() -> None:
+        target.mkdir(parents=parents, exist_ok=True)
+
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None, lambda: target.mkdir(parents=parents, exist_ok=True)
-    )
+    await loop.run_in_executor(None, _create_dir)
 
     return json.dumps(
         {
@@ -236,10 +259,11 @@ async def touch(path: str) -> list[TextContent]:
     target = Path(path).absolute()
     target = validate_path_in_jail(target)
 
+    def _touch_file() -> None:
+        target.touch(exist_ok=True)
+
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(
-        None, lambda: target.touch(exist_ok=True)
-    )
+    await loop.run_in_executor(None, _touch_file)
 
     return json.dumps(
         {

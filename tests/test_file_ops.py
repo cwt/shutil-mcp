@@ -3,7 +3,17 @@ from pathlib import Path
 
 import pytest
 
-from shutil_mcp.tools.file_ops import cat, cp, mkdir, mv, rm, touch, which
+from shutil_mcp.tools.file_ops import (
+    cat,
+    chmod,
+    chown,
+    cp,
+    mkdir,
+    mv,
+    rm,
+    touch,
+    which,
+)
 
 
 @pytest.mark.asyncio
@@ -274,3 +284,100 @@ async def test_touch_existing(tmp_path: Path) -> None:
     assert data["status"] == "success"
     assert existing.exists()
     assert existing.read_text() == "content"
+
+
+@pytest.mark.asyncio
+async def test_rm_file_symlink(tmp_path: Path) -> None:
+    import os
+
+    original = tmp_path / "original.txt"
+    original.write_text("important data")
+
+    link = tmp_path / "link.txt"
+    link.symlink_to(original)
+
+    result = await rm(str(link))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "symlink_removal"
+    assert not os.path.lexists(link)
+    # Original file must NOT be deleted
+    assert original.exists()
+    assert original.read_text() == "important data"
+
+
+@pytest.mark.asyncio
+async def test_rm_broken_symlink(tmp_path: Path) -> None:
+    import os
+
+    broken = tmp_path / "broken_link.txt"
+    broken.symlink_to(tmp_path / "does_not_exist.txt")
+
+    result = await rm(str(broken))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "symlink_removal"
+    assert not os.path.lexists(broken)
+
+
+@pytest.mark.asyncio
+async def test_rm_dir_symlink(tmp_path: Path) -> None:
+    import os
+
+    original_dir = tmp_path / "original_dir"
+    original_dir.mkdir()
+    (original_dir / "file.txt").write_text("hello")
+
+    link_dir = tmp_path / "link_dir"
+    link_dir.symlink_to(original_dir)
+
+    result = await rm(str(link_dir))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "symlink_removal"
+    assert not os.path.lexists(link_dir)
+    # Original directory and contents must NOT be deleted
+    assert original_dir.exists()
+    assert (original_dir / "file.txt").exists()
+
+
+@pytest.mark.asyncio
+async def test_chmod_octal_modes(tmp_path: Path) -> None:
+    test_file = tmp_path / "chmod_test.txt"
+    test_file.write_text("mode test")
+
+    # Octal integer
+    result = await chmod(str(test_file), 0o644)
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["mode"] == oct(0o644)
+
+    # Octal string "0755"
+    result = await chmod(str(test_file), "0755")
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["mode"] == oct(0o755)
+
+    # Octal string "0o700"
+    result = await chmod(str(test_file), "0o700")
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["mode"] == oct(0o700)
+
+
+@pytest.mark.asyncio
+async def test_chown_basic(tmp_path: Path) -> None:
+    import os
+
+    test_file = tmp_path / "chown_test.txt"
+    test_file.write_text("owner test")
+
+    current_uid = os.getuid()
+    result = await chown(str(test_file), user=str(current_uid))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["operation"] == "chown"
