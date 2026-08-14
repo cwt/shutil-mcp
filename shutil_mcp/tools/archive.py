@@ -5,7 +5,6 @@ Provides 'make_archive' and 'unpack_archive' tools.
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import aioshutil
 from mcp.types import TextContent
@@ -25,8 +24,8 @@ from shutil_mcp.server import mcp
 async def make_archive(
     base_name: str,
     format: str,
-    root_dir: Optional[str] = None,
-    base_dir: Optional[str] = None,
+    root_dir: str | None = None,
+    base_dir: str | None = None,
 ) -> list[TextContent]:
     """Create an archive file (zip, tar, etc.).
 
@@ -41,13 +40,23 @@ async def make_archive(
     base_path = validate_path_in_jail(base_path)
 
     r_dir = validate_dir_path(root_dir) if root_dir else None
-    b_dir = validate_path(base_dir) if base_dir else None
+
+    if base_dir:
+        if r_dir:
+            check_b_dir = (r_dir / base_dir).resolve()
+            validate_path_in_jail(check_b_dir)
+            b_dir_str = base_dir
+        else:
+            b_dir = validate_path(base_dir)
+            b_dir_str = str(b_dir)
+    else:
+        b_dir_str = None
 
     archive_path = await aioshutil.make_archive(
         str(base_path),
         format,
         root_dir=str(r_dir) if r_dir else None,
-        base_dir=str(b_dir) if b_dir else None,
+        base_dir=b_dir_str,
     )
 
     return json.dumps(
@@ -66,8 +75,8 @@ async def make_archive(
 @json_tool
 async def unpack_archive(
     filename: str,
-    extract_dir: Optional[str] = None,
-    format: Optional[str] = None,
+    extract_dir: str | None = None,
+    format: str | None = None,
 ) -> list[TextContent]:
     """Unpack an archive file.
 
@@ -77,11 +86,13 @@ async def unpack_archive(
         format: Archive format (optional)
     """
     archive_file = validate_path(filename)
-    e_dir = (
-        validate_dir_path(extract_dir, create_if_missing=True)
-        if extract_dir
-        else Path(".").absolute()
-    )
+    if extract_dir:
+        e_dir = validate_dir_path(extract_dir, create_if_missing=True)
+    elif mcp.jail_path:
+        e_dir = mcp.jail_path.resolve()
+    else:
+        e_dir = Path(".").resolve()
+
     e_dir = validate_path_in_jail(e_dir)
 
     await aioshutil.unpack_archive(
