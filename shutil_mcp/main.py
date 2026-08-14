@@ -24,6 +24,7 @@ from shutil_mcp.tools import (  # noqa: F401
     make_archive,
     mkdir,
     mv,
+    restore,
     rm,
     stat,
     touch,

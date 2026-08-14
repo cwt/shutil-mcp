@@ -64,20 +64,24 @@ Use these tools to perform file system operations asynchronously and precisely.
 - Use `disk_usage` to check available space before large copy or archive operations.
 - Always verify path existence and permissions before modifying files.
 
-**Safety**
+**Safety & Security Layers**
 - All paths are validated against a jail directory if configured.
-- Dangerous operations like `rm` should be used with caution.
-- Structured errors are provided for invalid paths or permission issues.
+- Verified safe operations: `mv` and `cp` verify destination data before removing origin.
+- Reversible permissions: `chmod` and `chown` record previous mode/ownership and rollback on error.
+- Soft-deletion: `rm` supports `trash=True` to stage deletions in `.trash` with `restore` capability.
+- Archive safety: `unpack_archive` validates all paths against zip-slip traversal attacks.
+- Dangerous operations should be used with caution; structured errors and verification are built-in.
 
 **Available Tools**
 - `ls`: List directory contents with detailed metadata in JSON format.
-- `cp`: Copy files or directories recursively.
-- `mv`: Move/rename files or directories.
-- `rm`: Remove files or directories recursively.
+- `cp`: Copy files or directories recursively with verification.
+- `mv`: Move/rename files or directories with safe verification before origin removal.
+- `rm`: Remove files or directories (supports soft-delete via trash=True).
+- `restore`: Restore a soft-deleted file or directory from trash.
 - `mkdir`: Create a new directory.
 - `touch`: Create an empty file or update file timestamps.
-- `chmod`: Change file/directory permissions.
-- `chown`: Change file/directory ownership.
+- `chmod`: Change file/directory permissions with rollback and previous_mode tracking.
+- `chown`: Change file/directory ownership with rollback and previous_user/group tracking.
 - `stat`: Get detailed file or directory metadata.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
@@ -85,8 +89,8 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `glob`: Find files matching glob patterns.
 - `grep`: Search file contents using regex patterns.
 - `tree`: Get a recursive directory tree as nested JSON.
-- `make_archive`: Create archive files (zip, tar, etc.).
-- `unpack_archive`: Unpack archive files.
+- `make_archive`: Create archive files (zip, tar, etc.) with overwrite protection.
+- `unpack_archive`: Unpack archive files safely with zip-slip protection.
 
 Be precise and always check your work by listing affected directories.""",
 )

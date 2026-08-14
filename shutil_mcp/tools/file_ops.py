@@ -1,18 +1,25 @@
 """File operations tools.
 
-Provides 'cp', 'mv', 'rm', 'chown', 'chmod', 'which', and 'cat' tools.
+Provides 'cp', 'mv', 'rm', 'restore', 'chown', 'chmod', 'which', and 'cat' tools.
 """
 
 import asyncio
 import json
 import os
+import stat as stat_module
+import time
+import uuid
 from pathlib import Path
 
 import aioshutil
 from mcp.types import TextContent
 
 from shutil_mcp.decorators import handle_errors, json_tool
-from shutil_mcp.helpers import validate_path, validate_path_in_jail
+from shutil_mcp.helpers import (
+    get_trash_dir,
+    validate_path,
+    validate_path_in_jail,
+)
 from shutil_mcp.server import mcp
 
 
@@ -20,7 +27,10 @@ from shutil_mcp.server import mcp
 @handle_errors
 @json_tool
 async def cp(
-    src: str, dst: str, follow_symlinks: bool = True
+    src: str,
+    dst: str,
+    follow_symlinks: bool = True,
+    overwrite: bool = True,
 ) -> list[TextContent]:
     """Copy files or directories recursively.
 
@@ -28,26 +38,68 @@ async def cp(
         src: Source path
         dst: Destination path
         follow_symlinks: Whether to follow symlinks (default: True)
+        overwrite: Whether to overwrite existing destination files (default: True)
     """
     source = validate_path(src)
-    # Destination must be in jail, but it might not exist yet
     dest = Path(dst).absolute()
     dest = validate_path_in_jail(dest)
 
+    target_dest = dest
+    if dest.exists() and dest.is_dir() and not source.is_dir():
+        target_dest = dest / source.name
+        target_dest = validate_path_in_jail(target_dest)
+
+    if target_dest.exists() and not overwrite:
+        raise ValueError(
+            f"Destination '{target_dest}' already exists. "
+            f"Set overwrite=True to replace."
+        )
+
+    loop = asyncio.get_running_loop()
+
     if source.is_dir():
+        if dest.resolve() == source.resolve() or dest.resolve().is_relative_to(
+            source.resolve()
+        ):
+            raise ValueError(
+                f"Cannot copy directory '{source}' into itself or its subdirectory '{dest}'."
+            )
         await aioshutil.copytree(
-            source, dest, symlinks=not follow_symlinks, dirs_exist_ok=True
+            source,
+            target_dest,
+            symlinks=not follow_symlinks,
+            dirs_exist_ok=overwrite,
         )
         op_type = "directory_copy"
     else:
-        await aioshutil.copy2(source, dest, follow_symlinks=follow_symlinks)
+        await aioshutil.copy2(
+            source, target_dest, follow_symlinks=follow_symlinks
+        )
         op_type = "file_copy"
+
+        def _verify_copy() -> None:
+            if not target_dest.exists():
+                raise IOError(
+                    f"Copy verification failed: destination '{target_dest}' does not exist"
+                )
+            if not source.is_symlink():
+                src_size = source.stat(follow_symlinks=follow_symlinks).st_size
+                dst_size = target_dest.stat(
+                    follow_symlinks=follow_symlinks
+                ).st_size
+                if src_size != dst_size:
+                    raise IOError(
+                        f"Copy verification failed: size mismatch (source: {src_size}, dest: {dst_size})"
+                    )
+
+        await loop.run_in_executor(None, _verify_copy)
 
     return json.dumps(
         {
             "operation": op_type,
             "src": str(source),
-            "dst": str(dest),
+            "dst": str(target_dest),
+            "verified": True,
             "status": "success",
         },
         separators=(",", ":"),
@@ -57,24 +109,126 @@ async def cp(
 @mcp.tool()
 @handle_errors
 @json_tool
-async def mv(src: str, dst: str) -> list[TextContent]:
-    """Move or rename files or directories.
+async def mv(
+    src: str,
+    dst: str,
+    overwrite: bool = True,
+) -> list[TextContent]:
+    """Move or rename files or directories with safety verification before origin removal.
 
     Args:
         src: Source path
         dst: Destination path
+        overwrite: Whether to overwrite existing destination files (default: True)
     """
     source = validate_path(src)
     dest = Path(dst).absolute()
     dest = validate_path_in_jail(dest)
 
-    await aioshutil.move(source, dest)
+    target_dest = dest
+    if dest.exists() and dest.is_dir() and not source.is_dir():
+        target_dest = dest / source.name
+        target_dest = validate_path_in_jail(target_dest)
+
+    if source.resolve() == target_dest.resolve():
+        return json.dumps(
+            {
+                "operation": "move",
+                "src": str(source),
+                "dst": str(target_dest),
+                "verified": True,
+                "status": "success",
+            },
+            separators=(",", ":"),
+        )  # type: ignore[return-value]
+
+    if target_dest.exists() and not overwrite:
+        raise ValueError(
+            f"Destination '{target_dest}' already exists. "
+            f"Set overwrite=True to replace."
+        )
+
+    loop = asyncio.get_running_loop()
+
+    if source.is_dir():
+        if (
+            target_dest.resolve() == source.resolve()
+            or target_dest.resolve().is_relative_to(source.resolve())
+        ):
+            raise ValueError(
+                f"Cannot move directory '{source}' into itself or its subdirectory '{target_dest}'."
+            )
+
+        await aioshutil.copytree(
+            source, target_dest, symlinks=True, dirs_exist_ok=overwrite
+        )
+
+        def _verify_dir() -> None:
+            if not target_dest.exists() or not target_dest.is_dir():
+                raise IOError(
+                    f"Move verification failed: directory '{target_dest}' was not created properly"
+                )
+
+        try:
+            await loop.run_in_executor(None, _verify_dir)
+        except Exception:
+            if target_dest.exists():
+                await aioshutil.rmtree(target_dest)
+            raise
+
+        await aioshutil.rmtree(source)
+    else:
+        if source.is_symlink():
+            link_target = os.readlink(source)
+
+            def _move_symlink() -> None:
+                if target_dest.exists() or target_dest.is_symlink():
+                    target_dest.unlink()
+                os.symlink(link_target, target_dest)
+                if not target_dest.is_symlink():
+                    raise IOError("Failed to create destination symlink")
+                source.unlink()
+
+            await loop.run_in_executor(None, _move_symlink)
+        else:
+            tmp_target = (
+                target_dest.parent
+                / f".tmp_mv_{uuid.uuid4().hex}_{target_dest.name}"
+            )
+            tmp_target = validate_path_in_jail(tmp_target)
+
+            try:
+                await aioshutil.copy2(source, tmp_target, follow_symlinks=True)
+
+                def _verify_and_finalize() -> None:
+                    if not tmp_target.exists():
+                        raise IOError("Temporary destination file not found")
+                    src_size = source.stat().st_size
+                    dst_size = tmp_target.stat().st_size
+                    if src_size != dst_size:
+                        raise IOError(
+                            f"Move verification failed: size mismatch (source: {src_size}, dest: {dst_size})"
+                        )
+                    os.replace(tmp_target, target_dest)
+                    if not target_dest.exists():
+                        raise IOError("Failed to finalize destination file")
+                    os.remove(source)
+
+                await loop.run_in_executor(None, _verify_and_finalize)
+            except Exception:
+                if tmp_target.exists():
+                    try:
+                        tmp_target.unlink()
+                    except Exception:
+                        pass
+                raise
 
     return json.dumps(
         {
             "operation": "move",
             "src": str(source),
-            "dst": str(dest),
+            "dst": str(target_dest),
+            "verified": True,
             "status": "success",
         },
         separators=(",", ":"),
@@ -84,20 +238,45 @@ async def mv(src: str, dst: str) -> list[TextContent]:
 @mcp.tool()
 @handle_errors
 @json_tool
-async def rm(path: str, recursive: bool = False) -> list[TextContent]:
-    """Remove files or directories.
+async def rm(
+    path: str,
+    recursive: bool = False,
+    trash: bool = False,
+) -> list[TextContent]:
+    """Remove files or directories, with optional soft-delete (trash) support.
 
     Args:
         path: Path to remove
         recursive: Whether to remove recursively if it's a directory (default: False)
+        trash: If True, move to .trash folder for undo capability instead of permanent deletion (default: False)
     """
     target = validate_path(path)
+    loop = asyncio.get_running_loop()
+
+    if trash:
+        trash_dir = get_trash_dir(target)
+        trash_name = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{target.name}"
+        trash_dest = trash_dir / trash_name
+        trash_dest = validate_path_in_jail(trash_dest)
+
+        await aioshutil.move(target, trash_dest)
+
+        return json.dumps(
+            {
+                "operation": "trash",
+                "path": str(target),
+                "trash_path": str(trash_dest),
+                "status": "success",
+            },
+            separators=(",", ":"),
+        )  # type: ignore[return-value]
 
     if target.is_symlink():
-        import asyncio
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, os.unlink, target)
+        def _unlink_symlink() -> None:
+            os.unlink(target)
+
+        await loop.run_in_executor(None, _unlink_symlink)
         op_type = "symlink_removal"
     elif target.is_dir():
         if not recursive:
@@ -107,11 +286,11 @@ async def rm(path: str, recursive: bool = False) -> list[TextContent]:
         await aioshutil.rmtree(target)
         op_type = "directory_removal"
     else:
-        # Run in thread since os.remove is blocking
-        import asyncio
 
-        loop = asyncio.get_running_loop()
-        await loop.run_in_executor(None, os.remove, target)
+        def _remove_file() -> None:
+            os.remove(target)
+
+        await loop.run_in_executor(None, _remove_file)
         op_type = "file_removal"
 
     return json.dumps(
@@ -123,8 +302,48 @@ async def rm(path: str, recursive: bool = False) -> list[TextContent]:
 @mcp.tool()
 @handle_errors
 @json_tool
+async def restore(
+    trash_path: str,
+    dst: str,
+    overwrite: bool = False,
+) -> list[TextContent]:
+    """Restore a file or directory from the trash folder.
+
+    Args:
+        trash_path: Path to the trashed item
+        dst: Destination path to restore to
+        overwrite: Whether to overwrite existing destination (default: False)
+    """
+    source = validate_path(trash_path)
+    dest = Path(dst).absolute()
+    dest = validate_path_in_jail(dest)
+
+    if dest.exists() and not overwrite:
+        raise ValueError(
+            f"Destination '{dest}' already exists. Set overwrite=True to replace."
+        )
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    await aioshutil.move(source, dest)
+
+    return json.dumps(
+        {
+            "operation": "restore",
+            "src": str(source),
+            "dst": str(dest),
+            "verified": True,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
 async def chmod(path: str, mode: int | str) -> list[TextContent]:
-    """Change file or directory permissions.
+    """Change file or directory permissions with rollback on failure and previous mode tracking.
 
     Args:
         path: Path to modify
@@ -143,17 +362,32 @@ async def chmod(path: str, mode: int | str) -> list[TextContent]:
     else:
         numeric_mode = mode
 
-    # Run in thread since os.chmod is blocking
-    import asyncio
-
     loop = asyncio.get_running_loop()
-    await loop.run_in_executor(None, os.chmod, target, numeric_mode)
+
+    def _get_mode() -> int:
+        return stat_module.S_IMODE(target.stat(follow_symlinks=False).st_mode)
+
+    prev_mode_int = await loop.run_in_executor(None, _get_mode)
+    previous_mode_oct = oct(prev_mode_int)
+
+    def _apply_chmod() -> None:
+        try:
+            os.chmod(target, numeric_mode)
+        except Exception as err:
+            try:
+                os.chmod(target, prev_mode_int)
+            except Exception:
+                pass
+            raise err
+
+    await loop.run_in_executor(None, _apply_chmod)
 
     return json.dumps(
         {
             "operation": "chmod",
             "path": str(target),
             "mode": oct(numeric_mode),
+            "previous_mode": previous_mode_oct,
             "status": "success",
         },
         separators=(",", ":"),
@@ -166,7 +400,7 @@ async def chmod(path: str, mode: int | str) -> list[TextContent]:
 async def chown(
     path: str, user: str | int | None = None, group: str | int | None = None
 ) -> list[TextContent]:
-    """Change file or directory ownership.
+    """Change file or directory ownership with rollback on failure and previous ownership tracking.
 
     Args:
         path: Path to modify
@@ -174,14 +408,27 @@ async def chown(
         group: Group name or numeric GID (default: None)
     """
     target = validate_path(path)
+    loop = asyncio.get_running_loop()
+
+    def _get_owner() -> tuple[int, int]:
+        st = target.stat(follow_symlinks=False)
+        return (st.st_uid, st.st_gid)
+
+    prev_uid, prev_gid = await loop.run_in_executor(None, _get_owner)
 
     final_user = int(user) if isinstance(user, str) and user.isdigit() else user
     final_group = (
         int(group) if isinstance(group, str) and group.isdigit() else group
     )
 
-    # Use type ignore if mypy stubs for aioshutil are incorrect
-    await aioshutil.chown(str(target), user=final_user, group=final_group)  # type: ignore[arg-type]
+    try:
+        await aioshutil.chown(str(target), user=final_user, group=final_group)  # type: ignore[arg-type]
+    except Exception as err:
+        try:
+            await aioshutil.chown(str(target), user=prev_uid, group=prev_gid)
+        except Exception:
+            pass
+        raise err
 
     return json.dumps(
         {
@@ -189,6 +436,8 @@ async def chown(
             "path": str(target),
             "user": user,
             "group": group,
+            "previous_user": prev_uid,
+            "previous_group": prev_gid,
             "status": "success",
         },
         separators=(",", ":"),

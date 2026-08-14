@@ -7,15 +7,27 @@ shutil-mcp MCP server.
 
 - **FastMCP Documentation**: <https://gofastmcp.com/>
 - **aioshutil Documentation**: <https://github.com/vpetrigo/aioshutil>
-- **MCP Protocol Documentation**: <https://modelcontextprotocol.info/docs/concepts/tools/>
+- **MCP Protocol Documentation**:
+  <https://modelcontextprotocol.info/docs/concepts/tools/>
 
 ## MCP Server Architecture
 
-This project uses a custom `SHUTIL_MCP` subclass of `FastMCP` to provide additional functionality:
+This project uses a custom `SHUTIL_MCP` subclass of `FastMCP` to provide
+additional functionality:
 
-- **Jail Path Support**: The `jail_path` property allows restricting file system access to a specific directory tree.
-- **Immutability**: Once `jail_path` is set to a non-None value, it becomes immutable to prevent runtime configuration changes that could bypass security.
-- **Security**: API key validation uses `secrets.compare_digest` to prevent timing attacks.
+- **Jail Path Support**: The `jail_path` property allows restricting file
+  system access to a specific directory tree.
+- **Immutability**: Once `jail_path` is set to a non-None value, it becomes
+  immutable to prevent runtime configuration changes that could bypass security.
+- **Security & Integrity Layers**:
+  - `mv` and `cp` verify destination data and file size integrity before
+    removing origin files.
+  - `chmod` and `chown` record previous states and rollback on errors.
+  - `rm` offers soft-delete staging into `.trash` paired with `restore`.
+  - `unpack_archive` scans archive contents to block zip-slip directory
+    traversal vulnerabilities.
+- **API Key Security**: API key validation uses `secrets.compare_digest` to
+  prevent timing attacks.
 
 ## Tool Parameter Ordering
 
@@ -42,9 +54,14 @@ async def ls(path: str = ".") -> str:
 @mcp.tool()
 @handle_errors
 @json_tool
-async def cp(src: str, dst: str, follow_symlinks: bool = True) -> str:
+async def cp(
+    src: str,
+    dst: str,
+    follow_symlinks: bool = True,
+    overwrite: bool = True,
+) -> str:
     # src, dst are required - FIRST
-    # follow_symlinks is optional - LAST
+    # follow_symlinks, overwrite are optional - LAST
     # ...
 ```
 
@@ -57,7 +74,8 @@ When adding a new MCP tool:
 3. **Apply `@json_tool` decorator** to return JSON output
 4. **Follow parameter ordering**: required params first, then optional params
 5. **Validate paths** using `validate_path(path)` or `validate_dir_path(path)`
-6. **Ensure all operations are asynchronous** using `aioshutil` or running blocking calls in executors
+6. **Ensure all operations are asynchronous** using `aioshutil` or running
+   blocking calls in executors
 7. **Return minified JSON** for efficiency
 
 ## Code Quality
@@ -77,10 +95,13 @@ Before committing changes, always run the following scripts:
 
 ## Testing New Tools
 
-Test new tools manually using the MCP client or by calling them directly in a
-Python REPL.
+Run the test suite using:
 
-**Full test suite (when implemented):**
+```bash
+poetry run pytest
+```
+
+or for the full test script:
 
 ```bash
 ./scripts/runtest.sh

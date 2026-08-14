@@ -181,3 +181,84 @@ def validate_dir_path(path_str: str, create_if_missing: bool = False) -> Path:
         raise ValueError(f"Path is not a directory: {path}")
 
     return path
+
+
+def get_trash_dir(path: Path) -> Path:
+    """Get and create a trash directory for soft deletions.
+
+    If a jail is configured, uses .trash inside the jail root.
+    Otherwise, uses .trash in the path's parent directory.
+    """
+    from shutil_mcp.server import mcp
+
+    if mcp.jail_path is not None:
+        trash_dir = mcp.jail_path.resolve() / ".trash"
+    else:
+        trash_dir = path.parent.resolve() / ".trash"
+
+    trash_dir = validate_path_in_jail(trash_dir)
+    trash_dir.mkdir(parents=True, exist_ok=True)
+    return trash_dir
+
+
+def validate_archive_safety(
+    archive_path: Path,
+    extract_dir: Path,
+    format: str | None = None,
+) -> None:
+    """Validate that an archive contains no zip-slip or path traversal attacks.
+
+    Args:
+        archive_path: Path to the archive file.
+        extract_dir: Path to directory where files will be extracted.
+        format: Optional archive format.
+
+    Raises:
+        ValueError: If any member path escapes extract_dir or jail.
+    """
+    resolved_extract_dir = extract_dir.resolve()
+    fmt = (format or "").lower()
+    path_str = str(archive_path).lower()
+
+    import tarfile
+    import zipfile
+
+    if fmt == "zip" or path_str.endswith((".zip", ".cbz")):
+        if zipfile.is_zipfile(archive_path):
+            with zipfile.ZipFile(archive_path, "r") as zf:
+                for name in zf.namelist():
+                    if name.startswith("/") or name.startswith("\\"):
+                        raise ValueError(
+                            f"Unsafe absolute path in archive member: '{name}'"
+                        )
+                    target = (resolved_extract_dir / name).resolve()
+                    try:
+                        target.relative_to(resolved_extract_dir)
+                        validate_path_in_jail(target)
+                    except ValueError as e:
+                        raise ValueError(
+                            f"Unsafe archive member path escaping destination: '{name}'"
+                        ) from e
+    elif tarfile.is_tarfile(archive_path):
+        with tarfile.open(archive_path, "r:*") as tf:
+            for member in tf.getmembers():
+                if member.name.startswith("/") or member.name.startswith("\\"):
+                    raise ValueError(
+                        f"Unsafe absolute path in archive member: '{member.name}'"
+                    )
+                if member.islnk() or member.issym():
+                    link_target = member.linkname
+                    if link_target.startswith("/") or link_target.startswith(
+                        "\\"
+                    ):
+                        raise ValueError(
+                            f"Unsafe absolute symlink in archive member: '{member.name}' -> '{link_target}'"
+                        )
+                target = (resolved_extract_dir / member.name).resolve()
+                try:
+                    target.relative_to(resolved_extract_dir)
+                    validate_path_in_jail(target)
+                except ValueError as e:
+                    raise ValueError(
+                        f"Unsafe archive member path escaping destination: '{member.name}'"
+                    ) from e
