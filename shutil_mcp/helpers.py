@@ -105,7 +105,7 @@ def validate_path_in_jail(path: Path) -> Path:
             f"Access is restricted to '{jail}' and its subdirectories."
         )
 
-    return path
+    return resolved
 
 
 def setup_event_loop() -> None:
