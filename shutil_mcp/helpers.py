@@ -254,6 +254,19 @@ def validate_archive_safety(
                         raise ValueError(
                             f"Unsafe absolute symlink in archive member: '{member.name}' -> '{link_target}'"
                         )
+                    # Check relative link targets for traversal
+                    member_dir = (
+                        resolved_extract_dir / Path(member.name).parent
+                    )
+                    resolved_link = (member_dir / link_target).resolve()
+                    try:
+                        resolved_link.relative_to(resolved_extract_dir)
+                        validate_path_in_jail(resolved_link)
+                    except ValueError:
+                        raise ValueError(
+                            f"Unsafe symlink target in archive member: "
+                            f"'{member.name}' -> '{link_target}' escapes destination"
+                        )
                 target = (resolved_extract_dir / member.name).resolve()
                 try:
                     target.relative_to(resolved_extract_dir)

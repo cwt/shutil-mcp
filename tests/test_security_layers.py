@@ -396,6 +396,31 @@ async def test_tar_absolute_attack_prevention(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_tar_symlink_traversal_attack_prevention(tmp_path: Path) -> None:
+    """Tar symlink with relative traversal must be rejected."""
+    extract_dir = tmp_path / "safe_tar_sym"
+    extract_dir.mkdir()
+    malicious_tar = tmp_path / "malicious_sym.tar"
+
+    # Create a tar with a symlink member pointing outside via relative path
+    with tarfile.open(malicious_tar, "w") as tf:
+        link_info = tarfile.TarInfo(name="evil_link")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "../../outside.txt"
+        tf.addfile(link_info)
+
+    result = await unpack_archive(
+        filename=str(malicious_tar),
+        extract_dir=str(extract_dir),
+        format="tar",
+    )
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "Unsafe" in text
+    assert not (tmp_path / "outside.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_make_archive_overwrite_protection(tmp_path: Path) -> None:
     src_dir = tmp_path / "archive_src"
     src_dir.mkdir()
