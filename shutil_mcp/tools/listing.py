@@ -32,7 +32,7 @@ async def ls(path: str = ".") -> list[TextContent]:
     loop = asyncio.get_running_loop()
 
     def _entry_sort_key(item: dict[str, Any]) -> tuple[bool, str]:
-        return (item["type"] != "directory", item["name"])
+        return (item["type"] not in ("directory", "symlink"), item["name"])
 
     def get_entries() -> list[dict[str, Any]]:
         entries: list[dict[str, Any]] = []
@@ -81,6 +81,7 @@ async def ls(path: str = ".") -> list[TextContent]:
         return entries
 
     entries = await loop.run_in_executor(None, get_entries)
+    # Sort entries: directories/symlinks first, then files, both alphabetically
     entries.sort(key=_entry_sort_key)
 
     return json.dumps(entries, separators=(",", ":"))  # type: ignore[return-value]

@@ -91,7 +91,10 @@ def validate_path_in_jail(path: Path) -> Path:
     try:
         resolved = path.resolve()
     except Exception:
-        resolved = path.absolute()
+        # Fallback: use realpath which always follows symlinks
+        import os
+
+        resolved = Path(os.path.realpath(str(path)))
 
     try:
         resolved.relative_to(jail)

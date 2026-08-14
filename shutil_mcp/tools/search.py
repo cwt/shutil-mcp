@@ -113,13 +113,17 @@ async def grep(
         if root.is_file():
             _search_file(root)
         else:
+            files_to_search: list[Path] = []
             for p in root.rglob("*"):
-                if len(matches) >= max_results:
-                    break
                 if p.is_file() and not p.is_symlink():
                     if include and not p.match(include):
                         continue
-                    _search_file(p)
+                    files_to_search.append(p)
+            files_to_search.sort()
+            for p in files_to_search:
+                if len(matches) >= max_results:
+                    break
+                _search_file(p)
 
         return matches
 
@@ -154,6 +158,9 @@ async def tree(
         max_depth: Maximum depth to traverse (default: None = unlimited)
     """
     root = validate_dir_path(path)
+
+    if max_depth is not None and max_depth < 0:
+        raise ValueError(f"max_depth must be >= 0, got {max_depth}")
 
     def _build_tree(
         dir_path: Path,

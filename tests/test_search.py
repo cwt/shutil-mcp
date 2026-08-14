@@ -257,3 +257,31 @@ async def test_tree_cycle_detection(tmp_path: Path) -> None:
     assert data["status"] == "success"
     parent_entry = data["tree"]["children"][0]
     assert parent_entry["name"] == "parent"
+
+
+async def test_tree_symlink_cycle_detection(tmp_path: Path) -> None:
+    """Test that tree() handles symlink cycles without infinite recursion."""
+    target = tmp_path / "cycle" / "a"
+    target.mkdir(parents=True)
+    (target / "file.txt").write_text("test")
+
+    # Create a symlink that points back to its parent, forming a cycle
+    cycle_link = target / "cycle"
+    cycle_link.symlink_to("..")
+
+    result = await tree(str(tmp_path / "cycle" / "a"))
+    data = json.loads(result[0].text)
+
+    # Should not crash — should have detected cycle or truncated
+    assert data["status"] == "success"
+    # Verify we didn't recurse infinitely
+    children = data["tree"]["children"][0].get("children", [])
+    assert len(children) < 100  # Should not have recursed deeply
+
+
+async def test_tree_invalid_max_depth(tmp_path: Path) -> None:
+    """Test that tree() rejects negative max_depth values."""
+    result = await tree(str(tmp_path), max_depth=-1)
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "max_depth" in text.lower()
