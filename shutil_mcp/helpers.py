@@ -281,9 +281,7 @@ def validate_archive_safety(
                             f"Unsafe absolute symlink in archive member: '{member.name}' -> '{link_target}'"
                         )
                     # Check relative link targets for traversal
-                    member_dir = (
-                        resolved_extract_dir / Path(member.name).parent
-                    )
+                    member_dir = resolved_extract_dir / Path(member.name).parent
                     resolved_link = (member_dir / link_target).resolve()
                     try:
                         resolved_link.relative_to(resolved_extract_dir)

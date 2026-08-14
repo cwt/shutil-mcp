@@ -13,6 +13,7 @@ from shutil_mcp.tools.file_ops import (
     chmod,
     chown,
     cp,
+    gc_trash,
     mv,
     restore,
     rm,
@@ -459,3 +460,38 @@ async def test_restore_rejects_non_trash_path(tmp_path: Path) -> None:
     text = result[0].text
     assert text.startswith("Error:")
     assert "not inside a .trash directory" in text
+
+
+@pytest.mark.asyncio
+async def test_gc_trash_removes_old_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gc_trash removes entries older than max_age_seconds."""
+    import time
+
+    # Set jail to tmp_path so gc_trash scans the right location
+    from shutil_mcp import server
+
+    monkeypatch.setattr(server.mcp, "_jail_path", tmp_path.resolve())
+
+    trash_dir = tmp_path / ".trash"
+    trash_dir.mkdir()
+
+    # Create an old entry (pretend it's 2 days old)
+    old_entry = trash_dir / "1000000_abc12345_old.txt"
+    old_entry.write_text("old data")
+    # Set mtime to 2 days ago
+    old_time = time.time() - 172800
+    os.utime(str(old_entry), (old_time, old_time))
+
+    # Create a fresh entry (should NOT be removed)
+    fresh_entry = trash_dir / f"{int(time.time())}_fresh1234_fresh.txt"
+    fresh_entry.write_text("fresh data")
+
+    result = await gc_trash(max_age_seconds=86400)
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["removed_count"] == 1
+    assert not old_entry.exists()
+    assert fresh_entry.exists()

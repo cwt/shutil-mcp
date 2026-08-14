@@ -123,9 +123,7 @@ async def cp(
                     f"does not exist"
                 )
             src_size = source.stat(follow_symlinks=follow_symlinks).st_size
-            dst_size = target_dest.stat(
-                follow_symlinks=follow_symlinks
-            ).st_size
+            dst_size = target_dest.stat(follow_symlinks=follow_symlinks).st_size
             if src_size != dst_size:
                 raise IOError(
                     f"Copy verification failed: size mismatch "
@@ -382,6 +380,92 @@ async def restore(
             "src": str(source),
             "dst": str(dest),
             "verified": True,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
+async def gc_trash(max_age_seconds: int = 86400) -> list[TextContent]:
+    """Garbage-collect trash entries older than max_age_seconds.
+
+    Scans all .trash directories inside the jail (or the default .trash
+    location when no jail is set) and permanently deletes entries whose
+    timestamp prefix is older than max_age_seconds.
+
+    Args:
+        max_age_seconds: Maximum age in seconds before deletion (default: 86400 = 24 h).
+    """
+    from shutil_mcp.server import mcp
+
+    now = time.time()
+    total_removed = 0
+    total_freed = 0
+
+    def _collect_trash_dirs(root: Path) -> list[Path]:
+        dirs: list[Path] = []
+        try:
+            for child in root.iterdir():
+                if child.name == ".trash" and child.is_dir():
+                    dirs.append(child)
+                elif child.is_dir() and not child.is_symlink():
+                    dirs.extend(_collect_trash_dirs(child))
+        except PermissionError:
+            pass
+        return dirs
+
+    if mcp.jail_path is not None:
+        trash_roots = [mcp.jail_path.resolve()]
+    else:
+        trash_roots = [Path(".").resolve()]
+
+    for root in trash_roots:
+        for trash_dir in _collect_trash_dirs(root):
+            try:
+                for entry in trash_dir.iterdir():
+                    if entry.is_file() or (
+                        entry.is_symlink() and not entry.exists()
+                    ):
+                        try:
+                            mtime = entry.stat(follow_symlinks=False).st_mtime
+                        except OSError:
+                            continue
+                        if now - mtime > max_age_seconds:
+                            try:
+                                total_freed += entry.stat(
+                                    follow_symlinks=False
+                                ).st_size
+                                entry.unlink()
+                                total_removed += 1
+                            except OSError:
+                                pass
+                    elif entry.is_dir() and not entry.is_symlink():
+                        try:
+                            import shutil
+
+                            size = 0
+                            for sub in entry.rglob("*"):
+                                try:
+                                    size += sub.stat().st_size
+                                except OSError:
+                                    pass
+                            shutil.rmtree(entry)
+                            total_removed += 1
+                            total_freed += size
+                        except OSError:
+                            pass
+            except PermissionError:
+                pass
+
+    return json.dumps(
+        {
+            "operation": "gc_trash",
+            "removed_count": total_removed,
+            "freed_bytes": total_freed,
+            "max_age_seconds": max_age_seconds,
             "status": "success",
         },
         separators=(",", ":"),
