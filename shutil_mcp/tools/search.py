@@ -145,20 +145,26 @@ async def tree(
     """
     root = validate_dir_path(path)
 
-    def _build_tree(
-        dir_path: Path, depth: int = 0
-    ) -> dict[str, object]:
+    def _build_tree(dir_path: Path, depth: int = 0) -> dict[str, object]:
         if max_depth is not None and depth > max_depth:
-            return {"name": dir_path.name, "type": "directory", "truncated": True}
+            return {
+                "name": dir_path.name,
+                "type": "directory",
+                "truncated": True,
+            }
+
+        def _is_real_dir(p: Path) -> bool:
+            return not p.is_symlink() and p.is_dir()
+
+        def _sort_key(p: Path) -> tuple[bool, str]:
+            return (not _is_real_dir(p), p.name)
 
         entries: list[dict[str, object]] = []
         try:
-            def _sort_key(p: Path) -> tuple[bool, str]:
-                return (not p.is_dir(follow_symlinks=False), p.name)
             for entry in sorted(dir_path.iterdir(), key=_sort_key):
                 try:
-                    is_dir = entry.is_dir(follow_symlinks=False)
                     is_symlink = entry.is_symlink()
+                    is_dir = not is_symlink and entry.is_dir()
                 except Exception:
                     continue
 
@@ -187,10 +193,11 @@ async def tree(
             "children": entries,
         }
 
+    def _run_tree_build() -> dict[str, object]:
+        return _build_tree(root)
+
     loop = asyncio.get_running_loop()
-    result = await loop.run_in_executor(
-        None, lambda: _build_tree(root)
-    )
+    result = await loop.run_in_executor(None, _run_tree_build)
 
     return json.dumps(
         {
@@ -201,5 +208,3 @@ async def tree(
         },
         separators=(",", ":"),
     )  # type: ignore[return-value]
-
-

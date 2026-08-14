@@ -51,6 +51,7 @@ async def test_glob_default_path(tmp_path: Path) -> None:
     cwd = Path.cwd()
     try:
         import os
+
         os.chdir(tmp_path)
         result = await glob("*.py")
         data = json.loads(result[0].text)
@@ -203,3 +204,24 @@ async def test_tree_file_sizes(tmp_path: Path) -> None:
     child = data["tree"]["children"][0]
     assert child["name"] == "f.txt"
     assert child["size"] == 100
+
+
+async def test_tree_with_symlinks(tmp_path: Path) -> None:
+    target_file = tmp_path / "target.txt"
+    target_file.write_text("hello")
+    link_file = tmp_path / "link.txt"
+    link_file.symlink_to(target_file)
+
+    target_dir = tmp_path / "target_dir"
+    target_dir.mkdir()
+    link_dir = tmp_path / "link_dir"
+    link_dir.symlink_to(target_dir)
+
+    result = await tree(str(tmp_path))
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+
+    children = {c["name"]: c for c in data["tree"]["children"]}
+    assert children["link.txt"]["type"] == "symlink"
+    assert children["link_dir"]["type"] == "symlink"
+    assert children["target_dir"]["type"] == "directory"
