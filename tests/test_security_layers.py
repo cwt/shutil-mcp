@@ -447,3 +447,15 @@ async def test_make_archive_overwrite_protection(tmp_path: Path) -> None:
     text2 = res2[0].text
     assert text2.startswith("Error:")
     assert "already exists" in text2
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_non_trash_path(tmp_path: Path) -> None:
+    """restore() must reject paths that are not inside a .trash directory."""
+    regular_file = tmp_path / "regular.txt"
+    regular_file.write_text("not in trash")
+
+    result = await restore(str(regular_file), str(tmp_path / "restored.txt"))
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "not inside a .trash directory" in text

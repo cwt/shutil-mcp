@@ -17,6 +17,8 @@ from mcp.types import TextContent
 from shutil_mcp.decorators import handle_errors, json_tool
 from shutil_mcp.helpers import (
     get_trash_dir,
+    is_trash_path,
+    sanitize_trash_name,
     validate_path,
     validate_path_in_jail,
 )
@@ -296,7 +298,8 @@ async def rm(
 
     if trash:
         trash_dir = get_trash_dir(target)
-        trash_name = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{target.name}"
+        safe_name = sanitize_trash_name(target.name)
+        trash_name = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{safe_name}"
         trash_dest = trash_dir / trash_name
         trash_dest = validate_path_in_jail(trash_dest)
 
@@ -356,6 +359,11 @@ async def restore(
         overwrite: Whether to overwrite existing destination (default: False)
     """
     source = validate_path(trash_path)
+    if not is_trash_path(source):
+        raise ValueError(
+            f"Source path '{source}' is not inside a .trash directory. "
+            f"Only items moved to trash via rm(trash=True) can be restored."
+        )
     dest = Path(dst).absolute()
     dest = validate_path_in_jail(dest)
 

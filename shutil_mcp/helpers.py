@@ -201,6 +201,32 @@ def get_trash_dir(path: Path) -> Path:
     return trash_dir
 
 
+def sanitize_trash_name(original_name: str) -> str:
+    """Sanitize a filename for use as a trash entry name.
+
+    Strips path separators and dangerous characters to prevent
+    path traversal via the original filename.
+    """
+    safe = original_name.replace("/", "_").replace("\\", "_")
+    # Collapse multiple underscores and strip leading dots/dashes
+    import re
+
+    safe = re.sub(r"_+", "_", safe).strip("._-")
+    return safe if safe else "unnamed"
+
+
+def is_trash_path(path: Path) -> bool:
+    """Check whether a path resides inside a .trash directory.
+
+    Returns True if any component of the resolved path is exactly '.trash'.
+    """
+    try:
+        parts = path.resolve().parts
+    except Exception:
+        return False
+    return ".trash" in parts
+
+
 def validate_archive_safety(
     archive_path: Path,
     extract_dir: Path,
