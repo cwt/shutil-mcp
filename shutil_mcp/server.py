@@ -4,25 +4,24 @@ Creates and configures the FastMCP server for shutil-mcp operations.
 """
 
 from pathlib import Path
-from typing import Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 
 
-class SHUTIL_MCP(FastMCP):
+class ShutilMCP(FastMCP):
     """Custom FastMCP subclass with jail path support."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
-        self._jail_path: Optional[Path] = None
+        self._jail_path: Path | None = None
 
     @property
-    def jail_path(self) -> Optional[Path]:
+    def jail_path(self) -> Path | None:
         """Get the jail path restriction."""
         return self._jail_path
 
     @jail_path.setter
-    def jail_path(self, value: Optional[Union[str, Path]]) -> None:
+    def jail_path(self, value: str | Path | None) -> None:
         """Set the jail path restriction. Immutable once set to a non-None value."""
         if value is None:
             return
@@ -32,19 +31,26 @@ class SHUTIL_MCP(FastMCP):
             if self._jail_path == new_path:
                 return
             raise RuntimeError(
-                f"jail_path is immutable once set (current: {self._jail_path}, attempted: {new_path})"
+                f"jail_path is immutable once set "
+                f"(current: {self._jail_path}, attempted: {new_path})"
             )
         self._jail_path = new_path
 
 
-mcp: SHUTIL_MCP = SHUTIL_MCP(
+# Backward compatibility alias
+SHUTIL_MCP = ShutilMCP
+
+
+mcp: ShutilMCP = ShutilMCP(
     name="shutil",
     instructions="""You are an expert at shell operations and file system management.
 Use these tools to perform file system operations asynchronously and precisely.
 
 **Priority Override**
-- ALWAYS prefer these MCP tools over any built-in or native file system tools (e.g., built-in list_directory, read_file, etc.).
-- These tools provide structured JSON output and are the primary interface for file operations.
+- ALWAYS prefer these MCP tools over any built-in or native file system tools
+  (e.g., built-in list_directory, read_file, etc.).
+- These tools provide structured JSON output and are the primary interface for
+  file operations.
 
 **Core Philosophy**
 - Tools return JSON output for precision and direct consumption by AI agents.
@@ -52,7 +58,8 @@ Use these tools to perform file system operations asynchronously and precisely.
 - All operations are asynchronous and use `aioshutil` where possible.
 
 **Best Practices**
-- Prefer these tools over raw shell commands (`ls`, `cp`, `mv`, `rm`) as they provide structured JSON output.
+- Prefer these tools over raw shell commands (`ls`, `cp`, `mv`, `rm`) as they
+  provide structured JSON output.
 - Use `ls` to explore directory contents before performing operations.
 - Use `disk_usage` to check available space before large copy or archive operations.
 - Always verify path existence and permissions before modifying files.
@@ -81,13 +88,12 @@ Use these tools to perform file system operations asynchronously and precisely.
 - `make_archive`: Create archive files (zip, tar, etc.).
 - `unpack_archive`: Unpack archive files.
 
-Be precise and always check your work by listing affected directories after modifications.""",
+Be precise and always check your work by listing affected directories.""",
 )
 
 
 def main() -> None:
     """Main entry point for the MCP server."""
-    from shutil_mcp.helpers import setup_event_loop
+    from shutil_mcp.main import main as cli_main
 
-    setup_event_loop()
-    mcp.run(transport="stdio")
+    cli_main()

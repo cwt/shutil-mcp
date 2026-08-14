@@ -81,8 +81,10 @@ def main() -> None:
     # Jail is required for HTTP transports
     if transports != {"stdio"} and not args.jail:
         print(
-            "Error: --jail is required for HTTP transports (sse, streamable-http).\n"
-            "This restricts file system access to a specific directory tree for security.\n"
+            "Error: --jail is required for HTTP transports "
+            "(sse, streamable-http).\n"
+            "This restricts file system access to a specific directory tree "
+            "for security.\n"
             "Example: --jail /home/user/projects",
             file=sys.stderr,
         )
@@ -133,7 +135,8 @@ def main() -> None:
                     Route(mcp.settings.sse_path, http_handler, methods=["POST"])
                 )
                 print(
-                    f"Added POST support to {mcp.settings.sse_path} for Streamable HTTP compatibility"
+                    f"Added POST support to {mcp.settings.sse_path} "
+                    f"for Streamable HTTP compatibility"
                 )
 
             # 2. Regular routes

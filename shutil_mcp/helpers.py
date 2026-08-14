@@ -1,12 +1,13 @@
 """Helper functions for the shutil-mcp MCP server.
 
-Provides common utilities for path validation, formatting, and performance setup.
+Provides common utilities for path validation and performance setup.
 """
 
 import json
 import secrets
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 
 class APIKeyMiddleware:
@@ -96,7 +97,8 @@ def validate_path_in_jail(path: Path) -> Path:
         resolved.relative_to(jail)
     except ValueError:
         raise ValueError(
-            f"Path '{path}' (resolved: '{resolved}') is outside the allowed jail directory '{jail}'. "
+            f"Path '{path}' (resolved: '{resolved}') is outside the "
+            f"allowed jail directory '{jail}'. "
             f"Access is restricted to '{jail}' and its subdirectories."
         )
 
@@ -121,18 +123,6 @@ def setup_event_loop() -> None:
             uvloop.install()
         except ImportError:
             pass
-
-
-def format_bytes(size: int) -> str:
-    """Format bytes into a human-readable string (e.g., '1.5 MB')."""
-    current_size: float = float(size)
-    for unit in ["bytes", "KB", "MB", "GB", "TB"]:
-        if current_size < 1024:
-            if unit == "bytes":
-                return f"{int(current_size)} {unit}"
-            return f"{current_size:.2f} {unit}"
-        current_size /= 1024
-    return f"{current_size:.2f} PB"
 
 
 def validate_path(path_str: str, must_exist: bool = True) -> Path:
@@ -188,26 +178,3 @@ def validate_dir_path(path_str: str, create_if_missing: bool = False) -> Path:
         raise ValueError(f"Path is not a directory: {path}")
 
     return path
-
-
-def sanitize_input(value: str, max_length: int = 1000) -> str:
-    """Sanitize user-provided input.
-
-    Args:
-        value: The input string to sanitize
-        max_length: Maximum allowed length (default 1000)
-
-    Returns:
-        The sanitized string
-    """
-    if not value:
-        return value
-
-    if len(value) > max_length:
-        raise ValueError(f"Input exceeds maximum length of {max_length}")
-
-    # Reject whitespace-only input
-    if not value.strip():
-        raise ValueError("Input must not be empty or whitespace-only")
-
-    return value
