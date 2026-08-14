@@ -71,6 +71,43 @@ async def cp(
             dirs_exist_ok=overwrite,
         )
         op_type = "directory_copy"
+
+        def _verify_dir_copy() -> None:
+            if not target_dest.exists() or not target_dest.is_dir():
+                raise IOError(
+                    f"Copy verification failed: destination '{target_dest}' "
+                    f"is not a directory"
+                )
+
+            def _compare_sizes(src: Path, dst: Path) -> None:
+                for src_item in src.rglob("*"):
+                    rel = src_item.relative_to(source)
+                    dst_item = target_dest / rel
+                    if src_item.is_file() and not src_item.is_symlink():
+                        if not dst_item.exists():
+                            raise IOError(
+                                f"Copy verification failed: missing "
+                                f"'{dst_item}'"
+                            )
+                        if dst_item.is_symlink():
+                            continue
+                        if src_item.stat().st_size != dst_item.stat().st_size:
+                            raise IOError(
+                                f"Copy verification failed: size mismatch "
+                                f"for '{rel}' "
+                                f"(source: {src_item.stat().st_size}, "
+                                f"dest: {dst_item.stat().st_size})"
+                            )
+                    elif src_item.is_dir() and not src_item.is_symlink():
+                        if not dst_item.is_dir():
+                            raise IOError(
+                                f"Copy verification failed: expected directory "
+                                f"'{dst_item}'"
+                            )
+
+            _compare_sizes(source, target_dest)
+
+        await loop.run_in_executor(None, _verify_dir_copy)
     else:
         await aioshutil.copy2(
             source, target_dest, follow_symlinks=follow_symlinks
@@ -80,17 +117,18 @@ async def cp(
         def _verify_copy() -> None:
             if not target_dest.exists():
                 raise IOError(
-                    f"Copy verification failed: destination '{target_dest}' does not exist"
+                    f"Copy verification failed: destination '{target_dest}' "
+                    f"does not exist"
                 )
-            if not source.is_symlink():
-                src_size = source.stat(follow_symlinks=follow_symlinks).st_size
-                dst_size = target_dest.stat(
-                    follow_symlinks=follow_symlinks
-                ).st_size
-                if src_size != dst_size:
-                    raise IOError(
-                        f"Copy verification failed: size mismatch (source: {src_size}, dest: {dst_size})"
-                    )
+            src_size = source.stat(follow_symlinks=follow_symlinks).st_size
+            dst_size = target_dest.stat(
+                follow_symlinks=follow_symlinks
+            ).st_size
+            if src_size != dst_size:
+                raise IOError(
+                    f"Copy verification failed: size mismatch "
+                    f"(source: {src_size}, dest: {dst_size})"
+                )
 
         await loop.run_in_executor(None, _verify_copy)
 

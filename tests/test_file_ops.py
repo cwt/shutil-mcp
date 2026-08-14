@@ -381,3 +381,75 @@ async def test_chown_basic(tmp_path: Path) -> None:
 
     assert data["status"] == "success"
     assert data["operation"] == "chown"
+
+
+@pytest.mark.asyncio
+async def test_cp_symlink_verification(tmp_path: Path) -> None:
+    """Verify that symlink copies are size-verified even when follow_symlinks=True."""
+    original = tmp_path / "original.txt"
+    original.write_text("symlink target content")
+    link = tmp_path / "link.txt"
+    link.symlink_to(original)
+
+    dst = tmp_path / "copied_link.txt"
+    result = await cp(str(link), str(dst), follow_symlinks=True)
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["verified"] is True
+    assert dst.exists()
+    assert dst.read_text() == "symlink target content"
+
+
+@pytest.mark.asyncio
+async def test_cp_symlink_no_follow_verification(tmp_path: Path) -> None:
+    """Verify symlink copy with follow_symlinks=False is still checked."""
+    original = tmp_path / "original.txt"
+    original.write_text("target")
+    link = tmp_path / "link.txt"
+    link.symlink_to(original)
+
+    dst = tmp_path / "copied_link_nofollow.txt"
+    result = await cp(str(link), str(dst), follow_symlinks=False)
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["verified"] is True
+    assert dst.is_symlink()
+    assert str(dst.readlink()) == str(original.resolve())
+
+
+@pytest.mark.asyncio
+async def test_cp_directory_copy_verification(tmp_path: Path) -> None:
+    """Verify directory copy checks all file sizes recursively."""
+    src_dir = tmp_path / "src_dir"
+    src_dir.mkdir()
+    (src_dir / "a.txt").write_text("content a")
+    sub = src_dir / "sub"
+    sub.mkdir()
+    (sub / "b.txt").write_text("content b deep")
+
+    dst_dir = tmp_path / "dst_dir"
+    result = await cp(str(src_dir), str(dst_dir))
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["verified"] is True
+    assert (dst_dir / "a.txt").read_text() == "content a"
+    assert (dst_dir / "sub" / "b.txt").read_text() == "content b deep"
+
+
+@pytest.mark.asyncio
+async def test_mv_directory_overwrite_protection(tmp_path: Path) -> None:
+    """Verify mv with overwrite=False preserves source when dest dir exists."""
+    src = tmp_path / "src_dir"
+    src.mkdir()
+    (src / "file.txt").write_text("source data")
+    dst = tmp_path / "dst_dir"
+    dst.mkdir()
+    (dst / "existing.txt").write_text("existing")
+
+    # Destination directory already exists, overwrite=False should fail
+    result = await mv(str(src), str(dst), overwrite=False)
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "already exists" in text
+    assert src.exists()
+    assert (src / "file.txt").read_text() == "source data"
