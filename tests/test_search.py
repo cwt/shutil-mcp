@@ -225,3 +225,35 @@ async def test_tree_with_symlinks(tmp_path: Path) -> None:
     assert children["link.txt"]["type"] == "symlink"
     assert children["link_dir"]["type"] == "symlink"
     assert children["target_dir"]["type"] == "directory"
+
+
+async def test_grep_binary_file_skipped(tmp_path: Path) -> None:
+    bin_file = tmp_path / "binary.bin"
+    bin_file.write_bytes(b"hello\x00world\x00pattern")
+
+    txt_file = tmp_path / "text.txt"
+    txt_file.write_text("hello world pattern\n")
+
+    result = await grep("pattern", path=str(tmp_path))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["count"] == 1
+    assert data["matches"][0]["file"] == str(txt_file)
+
+
+async def test_tree_cycle_detection(tmp_path: Path) -> None:
+    parent = tmp_path / "parent"
+    parent.mkdir()
+    (parent / "file.txt").write_text("hello")
+
+    # Create cyclic symlink inside parent pointing back to parent
+    loop_link = parent / "loop"
+    loop_link.symlink_to(parent)
+
+    result = await tree(str(tmp_path))
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    parent_entry = data["tree"]["children"][0]
+    assert parent_entry["name"] == "parent"

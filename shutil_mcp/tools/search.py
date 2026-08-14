@@ -74,6 +74,14 @@ async def grep(
     """
     root = validate_path(path)
 
+    def _is_binary(filepath: Path) -> bool:
+        try:
+            with open(filepath, "rb") as f:
+                chunk = f.read(1024)
+                return b"\x00" in chunk
+        except Exception:
+            return False
+
     def _grep() -> list[dict[str, object]]:
         flags = 0 if case_sensitive else re.IGNORECASE
         try:
@@ -81,20 +89,11 @@ async def grep(
         except re.error as e:
             raise ValueError(f"Invalid regex pattern: {e}")
 
-        files_to_search: list[Path] = []
-        if root.is_file():
-            files_to_search = [root]
-        else:
-            for p in root.rglob("*"):
-                if p.is_file() and not p.is_symlink():
-                    if include and not p.match(include):
-                        continue
-                    files_to_search.append(p)
-
         matches: list[dict[str, object]] = []
-        for filepath in files_to_search:
-            if len(matches) >= max_results:
-                break
+
+        def _search_file(filepath: Path) -> None:
+            if _is_binary(filepath):
+                return
             try:
                 with open(filepath, encoding="utf-8", errors="replace") as f:
                     for i, line in enumerate(f, 1):
@@ -109,7 +108,18 @@ async def grep(
                                 }
                             )
             except Exception:
-                continue
+                pass
+
+        if root.is_file():
+            _search_file(root)
+        else:
+            for p in root.rglob("*"):
+                if len(matches) >= max_results:
+                    break
+                if p.is_file() and not p.is_symlink():
+                    if include and not p.match(include):
+                        continue
+                    _search_file(p)
 
         return matches
 
@@ -145,7 +155,25 @@ async def tree(
     """
     root = validate_dir_path(path)
 
-    def _build_tree(dir_path: Path, depth: int = 0) -> dict[str, object]:
+    def _build_tree(
+        dir_path: Path,
+        depth: int = 0,
+        visited: set[tuple[int, int]] | None = None,
+    ) -> dict[str, object]:
+        cur_visited = set() if visited is None else visited
+        try:
+            st = dir_path.stat()
+            dev_ino = (st.st_dev, st.st_ino)
+            if dev_ino in cur_visited:
+                return {
+                    "name": dir_path.name,
+                    "type": "directory",
+                    "cyclic": True,
+                }
+            cur_visited.add(dev_ino)
+        except Exception:
+            pass
+
         if max_depth is not None and depth > max_depth:
             return {
                 "name": dir_path.name,
@@ -169,7 +197,9 @@ async def tree(
                     continue
 
                 if is_dir:
-                    entries.append(_build_tree(entry, depth + 1))
+                    entries.append(
+                        _build_tree(entry, depth + 1, set(cur_visited))
+                    )
                 else:
                     e: dict[str, object] = {
                         "name": entry.name,
