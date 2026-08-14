@@ -12,6 +12,7 @@ from shutil_mcp.server import mcp
 
 # Import all tools to register them with the MCP server
 from shutil_mcp.tools import (  # noqa: F401
+    cat,
     chmod,
     chown,
     cp,
