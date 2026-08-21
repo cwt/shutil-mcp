@@ -22,7 +22,9 @@ from shutil_mcp.helpers import (
     build_trash_report,
     get_dir_size,
     get_trash_dir,
+    is_trash_path,
     read_trash_meta,
+    sanitize_trash_name,
     validate_path,
     validate_path_in_jail,
     write_trash_meta,
@@ -78,6 +80,43 @@ async def cp(
             dirs_exist_ok=overwrite,
         )
         op_type = "directory_copy"
+
+        def _verify_dir_copy() -> None:
+            if not target_dest.exists() or not target_dest.is_dir():
+                raise IOError(
+                    f"Copy verification failed: destination '{target_dest}' "
+                    f"is not a directory"
+                )
+
+            def _compare_sizes(src: Path, dst: Path) -> None:
+                for src_item in src.rglob("*"):
+                    rel = src_item.relative_to(source)
+                    dst_item = target_dest / rel
+                    if src_item.is_file() and not src_item.is_symlink():
+                        if not dst_item.exists():
+                            raise IOError(
+                                f"Copy verification failed: missing "
+                                f"'{dst_item}'"
+                            )
+                        if dst_item.is_symlink():
+                            continue
+                        if src_item.stat().st_size != dst_item.stat().st_size:
+                            raise IOError(
+                                f"Copy verification failed: size mismatch "
+                                f"for '{rel}' "
+                                f"(source: {src_item.stat().st_size}, "
+                                f"dest: {dst_item.stat().st_size})"
+                            )
+                    elif src_item.is_dir() and not src_item.is_symlink():
+                        if not dst_item.is_dir():
+                            raise IOError(
+                                f"Copy verification failed: expected directory "
+                                f"'{dst_item}'"
+                            )
+
+            _compare_sizes(source, target_dest)
+
+        await loop.run_in_executor(None, _verify_dir_copy)
     else:
         await aioshutil.copy2(
             source, target_dest, follow_symlinks=follow_symlinks
@@ -87,17 +126,16 @@ async def cp(
         def _verify_copy() -> None:
             if not target_dest.exists():
                 raise IOError(
-                    f"Copy verification failed: destination '{target_dest}' does not exist"
+                    f"Copy verification failed: destination '{target_dest}' "
+                    f"does not exist"
                 )
-            if not source.is_symlink():
-                src_size = source.stat(follow_symlinks=follow_symlinks).st_size
-                dst_size = target_dest.stat(
-                    follow_symlinks=follow_symlinks
-                ).st_size
-                if src_size != dst_size:
-                    raise IOError(
-                        f"Copy verification failed: size mismatch (source: {src_size}, dest: {dst_size})"
-                    )
+            src_size = source.stat(follow_symlinks=follow_symlinks).st_size
+            dst_size = target_dest.stat(follow_symlinks=follow_symlinks).st_size
+            if src_size != dst_size:
+                raise IOError(
+                    f"Copy verification failed: size mismatch "
+                    f"(source: {src_size}, dest: {dst_size})"
+                )
 
         await loop.run_in_executor(None, _verify_copy)
 
@@ -269,7 +307,8 @@ async def rm(
 
     trash_dir = get_trash_dir(target)
     trashed_at = int(time.time())
-    trash_name = f"{trashed_at}_{uuid.uuid4().hex[:8]}_{target.name}"
+    safe_name = sanitize_trash_name(target.name)
+    trash_name = f"{trashed_at}_{uuid.uuid4().hex[:8]}_{safe_name}"
     trash_dest = trash_dir / trash_name
     trash_dest = validate_path_in_jail(trash_dest)
 
@@ -319,6 +358,11 @@ async def restore(
         overwrite: Whether to overwrite an existing destination (default: False)
     """
     source = validate_path(trash_path)
+    if not is_trash_path(source):
+        raise ValueError(
+            f"Source path '{source}' is not inside a .trash directory. "
+            f"Only items moved to trash via rm can be restored."
+        )
     trash_dir = source.parent
     loop = asyncio.get_running_loop()
 
@@ -435,6 +479,92 @@ async def empty_trash(path: str = ".") -> list[TextContent]:
             "item_count": len(removed_list),
             "total_bytes": cast(int, result["total_bytes"]),
             "removed": removed_list,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
+async def gc_trash(max_age_seconds: int = 86400) -> list[TextContent]:
+    """Garbage-collect trash entries older than max_age_seconds.
+
+    Scans all .trash directories inside the jail (or the default .trash
+    location when no jail is set) and permanently deletes entries whose
+    timestamp prefix is older than max_age_seconds.
+
+    Args:
+        max_age_seconds: Maximum age in seconds before deletion (default: 86400 = 24 h).
+    """
+    from shutil_mcp.server import mcp
+
+    now = time.time()
+    total_removed = 0
+    total_freed = 0
+
+    def _collect_trash_dirs(root: Path) -> list[Path]:
+        dirs: list[Path] = []
+        try:
+            for child in root.iterdir():
+                if child.name == ".trash" and child.is_dir():
+                    dirs.append(child)
+                elif child.is_dir() and not child.is_symlink():
+                    dirs.extend(_collect_trash_dirs(child))
+        except PermissionError:
+            pass
+        return dirs
+
+    if mcp.jail_path is not None:
+        trash_roots = [mcp.jail_path.resolve()]
+    else:
+        trash_roots = [Path(".").resolve()]
+
+    for root in trash_roots:
+        for trash_dir in _collect_trash_dirs(root):
+            try:
+                for entry in trash_dir.iterdir():
+                    if entry.is_file() or (
+                        entry.is_symlink() and not entry.exists()
+                    ):
+                        try:
+                            mtime = entry.stat(follow_symlinks=False).st_mtime
+                        except OSError:
+                            continue
+                        if now - mtime > max_age_seconds:
+                            try:
+                                total_freed += entry.stat(
+                                    follow_symlinks=False
+                                ).st_size
+                                entry.unlink()
+                                total_removed += 1
+                            except OSError:
+                                pass
+                    elif entry.is_dir() and not entry.is_symlink():
+                        try:
+                            import shutil
+
+                            size = 0
+                            for sub in entry.rglob("*"):
+                                try:
+                                    size += sub.stat().st_size
+                                except OSError:
+                                    pass
+                            shutil.rmtree(entry)
+                            total_removed += 1
+                            total_freed += size
+                        except OSError:
+                            pass
+            except PermissionError:
+                pass
+
+    return json.dumps(
+        {
+            "operation": "gc_trash",
+            "removed_count": total_removed,
+            "freed_bytes": total_freed,
+            "max_age_seconds": max_age_seconds,
             "status": "success",
         },
         separators=(",", ":"),

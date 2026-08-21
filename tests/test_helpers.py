@@ -6,6 +6,8 @@ import pytest
 
 from shutil_mcp.helpers import (
     APIKeyMiddleware,
+    is_trash_path,
+    sanitize_trash_name,
     setup_event_loop,
     validate_dir_path,
 )
@@ -130,3 +132,22 @@ def test_validate_dir_path(tmp_path: Path) -> None:
         validate_dir_path(str(new_d), create_if_missing=True) == new_d.resolve()
     )
     assert new_d.exists()
+
+
+def test_sanitize_trash_name_strips_separators() -> None:
+    assert sanitize_trash_name("file.txt") == "file.txt"
+    assert sanitize_trash_name("../evil.txt") == "evil.txt"
+    assert sanitize_trash_name("sub/dir/file.txt") == "sub_dir_file.txt"
+    assert sanitize_trash_name("") == "unnamed"
+    assert sanitize_trash_name("....") == "unnamed"
+
+
+def test_is_trash_path() -> None:
+    p = Path("/a/.trash/1234_file.txt")
+    assert is_trash_path(p) is True
+
+    p2 = Path("/a/b/file.txt")
+    assert is_trash_path(p2) is False
+
+    p3 = Path("/a/jail_subdir/file.txt")
+    assert is_trash_path(p3) is False

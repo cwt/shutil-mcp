@@ -87,3 +87,23 @@ def test_jail_parent_traversal_rejected(
 
     with pytest.raises(ValueError, match="outside the allowed jail directory"):
         validate_path(str(jail_dir / ".." / "other.txt"), must_exist=False)
+
+
+def test_validate_path_in_jail_returns_resolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from shutil_mcp import server
+
+    jail_dir = tmp_path / "jail"
+    jail_dir.mkdir()
+    inside_file = jail_dir / "subdir" / "file.txt"
+    inside_file.parent.mkdir()
+    inside_file.write_text("hello")
+
+    monkeypatch.setattr(server.mcp, "_jail_path", jail_dir.resolve())
+
+    # Input with relative path components should be resolved
+    rel_path = jail_dir / "subdir" / ".." / "subdir" / "file.txt"
+    result = validate_path_in_jail(rel_path)
+    assert result == inside_file.resolve()
+    assert result.is_absolute()

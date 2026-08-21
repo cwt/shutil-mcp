@@ -14,6 +14,7 @@ from shutil_mcp.tools.file_ops import (
     chown,
     cp,
     empty_trash,
+    gc_trash,
     mv,
     restore,
     rm,
@@ -455,6 +456,31 @@ async def test_tar_absolute_attack_prevention(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_tar_symlink_traversal_attack_prevention(tmp_path: Path) -> None:
+    """Tar symlink with relative traversal must be rejected."""
+    extract_dir = tmp_path / "safe_tar_sym"
+    extract_dir.mkdir()
+    malicious_tar = tmp_path / "malicious_sym.tar"
+
+    # Create a tar with a symlink member pointing outside via relative path
+    with tarfile.open(malicious_tar, "w") as tf:
+        link_info = tarfile.TarInfo(name="evil_link")
+        link_info.type = tarfile.SYMTYPE
+        link_info.linkname = "../../outside.txt"
+        tf.addfile(link_info)
+
+    result = await unpack_archive(
+        filename=str(malicious_tar),
+        extract_dir=str(extract_dir),
+        format="tar",
+    )
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "Unsafe" in text
+    assert not (tmp_path / "outside.txt").exists()
+
+
+@pytest.mark.asyncio
 async def test_make_archive_overwrite_protection(tmp_path: Path) -> None:
     src_dir = tmp_path / "archive_src"
     src_dir.mkdir()
@@ -481,3 +507,50 @@ async def test_make_archive_overwrite_protection(tmp_path: Path) -> None:
     text2 = res2[0].text
     assert text2.startswith("Error:")
     assert "already exists" in text2
+
+
+@pytest.mark.asyncio
+async def test_restore_rejects_non_trash_path(tmp_path: Path) -> None:
+    """restore() must reject paths that are not inside a .trash directory."""
+    regular_file = tmp_path / "regular.txt"
+    regular_file.write_text("not in trash")
+
+    result = await restore(str(regular_file), str(tmp_path / "restored.txt"))
+    text = result[0].text
+    assert text.startswith("Error:")
+    assert "not inside a .trash directory" in text
+
+
+@pytest.mark.asyncio
+async def test_gc_trash_removes_old_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gc_trash removes entries older than max_age_seconds."""
+    import time
+
+    # Set jail to tmp_path so gc_trash scans the right location
+    from shutil_mcp import server
+
+    monkeypatch.setattr(server.mcp, "_jail_path", tmp_path.resolve())
+
+    trash_dir = tmp_path / ".trash"
+    trash_dir.mkdir()
+
+    # Create an old entry (pretend it's 2 days old)
+    old_entry = trash_dir / "1000000_abc12345_old.txt"
+    old_entry.write_text("old data")
+    # Set mtime to 2 days ago
+    old_time = time.time() - 172800
+    os.utime(str(old_entry), (old_time, old_time))
+
+    # Create a fresh entry (should NOT be removed)
+    fresh_entry = trash_dir / f"{int(time.time())}_fresh1234_fresh.txt"
+    fresh_entry.write_text("fresh data")
+
+    result = await gc_trash(max_age_seconds=86400)
+    data = json.loads(result[0].text)
+
+    assert data["status"] == "success"
+    assert data["removed_count"] == 1
+    assert not old_entry.exists()
+    assert fresh_entry.exists()
