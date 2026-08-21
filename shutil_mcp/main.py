@@ -18,6 +18,7 @@ from shutil_mcp.tools import (  # noqa: F401
     cp,
     disk_usage,
     empty_trash,
+    gc_trash,
     get_archive_formats,
     glob,
     grep,

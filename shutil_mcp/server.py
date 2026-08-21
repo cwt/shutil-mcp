@@ -59,40 +59,56 @@ Use these tools to perform file system operations asynchronously and precisely.
 
 **Safety, Integrity & Reversibility**
 - All paths are validated against a jail directory if configured.
-- Fault-tolerant moves: `mv` verifies destination integrity before deleting origin; if an error occurs, the source remains untouched.
-- Automatic rollback: `chmod` and `chown` automatically restore previous permissions/ownership if an operation fails.
-- Undo metadata: `chmod` and `chown` return `previous_mode` and `previous_user`/`previous_group` in the JSON response to enable 1-step undo.
-- Reversible deletion by default: `rm` ALWAYS soft-deletes -- it moves the target into a `.trash` folder and NEVER permanently deletes. Trashed items are recovered with `restore`.
-- Trash reporting: every `rm` response includes a `trash` object with `storage.trash_used_percent`, `total_bytes`, `item_count`, and `contents` (original path + deletion timestamp).
-- Overwrite protection: `cp`, `mv`, `restore`, `make_archive`, and `unpack_archive` support `overwrite=False` to prevent accidental data replacement.
-- Archive safety: `unpack_archive` checks against zip-slip and directory traversal attacks before extraction.
+- Fault-tolerant moves: `mv` verifies destination integrity before deleting origin;
+  if an error occurs, the source remains untouched.
+- Automatic rollback: `chmod` and `chown` automatically restore previous
+  permissions/ownership if an operation fails.
+- Undo metadata: `chmod` and `chown` return `previous_mode` and
+  `previous_user`/`previous_group` in the JSON response to enable 1-step undo.
+- Reversible deletion by default: `rm` ALWAYS soft-deletes -- it moves the target
+  into a `.trash` folder and NEVER permanently deletes. Trashed items are recovered
+  with `restore`.
+- Trash reporting: every `rm` response includes a `trash` object with
+  `storage.trash_used_percent`, `total_bytes`, `item_count`, and `contents`
+  (original path + deletion timestamp).
+- Overwrite protection: `cp`, `mv`, `restore`, `make_archive`, and `unpack_archive`
+  support `overwrite=False` to prevent accidental data replacement.
+- Archive safety: `unpack_archive` checks against zip-slip and directory traversal
+  attacks before extraction.
 
 **Best Practices**
 - Prefer these tools over raw shell commands (`ls`, `cp`, `mv`, `rm`) as they
   provide structured JSON output.
 - Use `ls` to explore directory contents before performing operations.
 - Use `disk_usage` to check available space before large copy or archive operations.
-- `rm` never deletes permanently; deleted data accumulates in `.trash` until it is purged with `empty_trash` (only after the user confirms).
+- `rm` never deletes permanently; deleted data accumulates in `.trash` until it
+  is purged with `empty_trash` (only after the user confirms).
 - Always verify path existence and permissions before modifying files.
 
 **Trash Management & Storage Pressure**
 - `rm` never deletes permanently; deleted items accumulate in `.trash`.
-- After every `rm`, inspect `trash.storage.trash_used_percent` and `trash.total_bytes` in the response.
-- If `trash_used_percent` is high (e.g., >= 80%) OR the trash is large relative to available space, STOP and ask the user whether they want to empty the trash before continuing. Do not keep deleting silently.
-- To permanently purge the trash, use `empty_trash` -- but ONLY after the user has explicitly confirmed. This is the only irreversible operation.
-- Use `restore` to recover a specific trashed item (it defaults to the item's original path).
+- After every `rm`, inspect `trash.storage.trash_used_percent` and `trash.total_bytes`
+  in the response.
+- If `trash_used_percent` is high (e.g., >= 80%) OR the trash is large relative to
+  available space, STOP and ask the user whether they want to empty the trash before
+  continuing. Do not keep deleting silently.
+- To permanently purge the trash, use `empty_trash` -- but ONLY after the user has
+  explicitly confirmed. This is the only irreversible operation.
+- Use `restore` to recover a specific trashed item (it defaults to the item's
+  original path).
 
 **Available Tools**
 - `ls`: List directory contents with detailed metadata in JSON format.
-- `cp`: Copy files or directories recursively with verification and overwrite protection.
-- `mv`: Move/rename files or directories with destination verification and origin preservation on failure.
-- `rm`: Soft-delete by moving to `.trash`. Never permanently deletes; the response reports trash size, storage share, and contents.
-- `restore`: Restore a soft-deleted file or directory from trash (defaults to its original path).
-- `empty_trash`: Permanently purge the trash folder (only after explicit user confirmation).
+- `cp`: Copy files/directories recursively with verification and overwrite protection.
+- `mv`: Move/rename files/directories with verification and fault tolerance.
+- `rm`: Soft-delete by moving to `.trash`. Reports trash status in JSON response.
+- `restore`: Restore a soft-deleted file or directory from trash.
+- `empty_trash`: Permanently purge trash folder (only after user confirmation).
+- `gc_trash`: Garbage-collect expired trash entries based on age threshold.
 - `mkdir`: Create a new directory.
 - `touch`: Create an empty file or update file timestamps.
-- `chmod`: Change file/directory permissions with rollback and previous_mode tracking.
-- `chown`: Change file/directory ownership with rollback and previous_user/group tracking.
+- `chmod`: Change permissions with rollback and previous_mode tracking.
+- `chown`: Change ownership with rollback and previous_user/group tracking.
 - `stat`: Get detailed file or directory metadata.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.

@@ -299,7 +299,10 @@ def build_trash_report(trash_dir: Path) -> dict[str, object]:
     except OSError:
         pass
 
-    contents.sort(key=lambda c: cast(int, c["trashed_at"]))
+    def _get_trashed_at(c: dict[str, object]) -> int:
+        return cast(int, c["trashed_at"])
+
+    contents.sort(key=_get_trashed_at)
 
     total_bytes = sum(cast(int, c["size_bytes"]) for c in contents)
     usage = shutil.disk_usage(str(trash_dir))
@@ -320,6 +323,7 @@ def build_trash_report(trash_dir: Path) -> dict[str, object]:
         },
         "contents": contents,
     }
+
 
 def sanitize_trash_name(original_name: str) -> str:
     """Sanitize a filename for use as a trash entry name.
@@ -398,7 +402,8 @@ def validate_archive_safety(
                         "\\"
                     ):
                         raise ValueError(
-                            f"Unsafe absolute symlink in archive member: '{member.name}' -> '{link_target}'"
+                            f"Unsafe absolute symlink in archive member: "
+                            f"'{member.name}' -> '{link_target}'"
                         )
                     # Check relative link targets for traversal
                     member_dir = resolved_extract_dir / Path(member.name).parent
@@ -417,5 +422,6 @@ def validate_archive_safety(
                     validate_path_in_jail(target)
                 except ValueError as e:
                     raise ValueError(
-                        f"Unsafe archive member path escaping destination: '{member.name}'"
+                        f"Unsafe archive member path escaping destination: "
+                        f"'{member.name}'"
                     ) from e
