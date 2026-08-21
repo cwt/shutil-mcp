@@ -13,6 +13,7 @@ from shutil_mcp.tools.file_ops import (
     chmod,
     chown,
     cp,
+    empty_trash,
     mv,
     restore,
     rm,
@@ -264,13 +265,25 @@ async def test_rm_trash_soft_delete_and_restore(tmp_path: Path) -> None:
     file_to_trash.write_text("restore me later")
 
     # Soft delete to trash
-    rm_result = await rm(str(file_to_trash), trash=True)
+    rm_result = await rm(str(file_to_trash))
     rm_data = json.loads(rm_result[0].text)
     assert rm_data["status"] == "success"
     assert rm_data["operation"] == "trash"
     trash_path = rm_data["trash_path"]
     assert Path(trash_path).exists()
     assert not file_to_trash.exists()
+
+    # The response must report trash size, storage share, and contents.
+    assert "trash" in rm_data
+    assert rm_data["trash"]["item_count"] >= 1
+    assert rm_data["trash"]["total_bytes"] >= 0
+    assert rm_data["trash"]["storage"]["trash_used_percent"] >= 0
+    trashed = [
+        c
+        for c in rm_data["trash"]["contents"]
+        if c["original_path"] == str(file_to_trash)
+    ]
+    assert trashed, "trashed item should be listed with its original path"
 
     # Restore from trash
     restored_dest = work_dir / "trash_me.txt"
@@ -290,7 +303,7 @@ async def test_restore_overwrite_protection(tmp_path: Path) -> None:
     file_to_trash = work_dir / "file.txt"
     file_to_trash.write_text("original in trash")
 
-    rm_res = await rm(str(file_to_trash), trash=True)
+    rm_res = await rm(str(file_to_trash))
     trash_path = json.loads(rm_res[0].text)["trash_path"]
 
     # Recreate existing file at destination
@@ -307,6 +320,52 @@ async def test_restore_overwrite_protection(tmp_path: Path) -> None:
     data = json.loads(res_ovw[0].text)
     assert data["status"] == "success"
     assert file_to_trash.read_text() == "original in trash"
+
+
+@pytest.mark.asyncio
+async def test_restore_defaults_to_original_path(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work_default"
+    work_dir.mkdir()
+    file_to_trash = work_dir / "original.txt"
+    file_to_trash.write_text("come back home")
+
+    await rm(str(file_to_trash))
+    assert not file_to_trash.exists()
+
+    # Restore without dst -> should return to its recorded original path.
+    trash_path = work_dir / ".trash"
+    trashed_items = [
+        p
+        for p in trash_path.iterdir()
+        if p.name != ".meta" and not p.name.startswith(".meta")
+    ]
+    assert trashed_items
+    result = await restore(str(trashed_items[0]))
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert file_to_trash.exists()
+    assert file_to_trash.read_text() == "come back home"
+
+
+@pytest.mark.asyncio
+async def test_empty_trash_purges(tmp_path: Path) -> None:
+    work_dir = tmp_path / "work_empty"
+    work_dir.mkdir()
+    victim = work_dir / "victim.txt"
+    victim.write_text("delete me")
+
+    await rm(str(victim))
+    trash_path = work_dir / ".trash"
+    assert any(p.name != ".meta" for p in trash_path.iterdir())
+
+    result = await empty_trash(str(work_dir))
+    data = json.loads(result[0].text)
+    assert data["status"] == "success"
+    assert data["operation"] == "empty_trash"
+    assert data["item_count"] >= 1
+    # Everything is gone, but the (empty) trash folder remains.
+    remaining = [p for p in trash_path.iterdir() if p.name != ".meta"]
+    assert remaining == []
 
 
 @pytest.mark.asyncio

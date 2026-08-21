@@ -42,7 +42,7 @@ async def test_cp_mv_rm(tmp_path: Path) -> None:
     assert not dst_dir.exists()
 
     # Remove
-    rm_result = await rm(str(renamed_dir), recursive=True)
+    rm_result = await rm(str(renamed_dir))
     rm_data = json.loads(rm_result[0].text)
     assert rm_data["status"] == "success"
     assert not renamed_dir.exists()
@@ -300,7 +300,7 @@ async def test_rm_file_symlink(tmp_path: Path) -> None:
     data = json.loads(result[0].text)
 
     assert data["status"] == "success"
-    assert data["operation"] == "symlink_removal"
+    assert data["operation"] == "trash"
     assert not os.path.lexists(link)
     # Original file must NOT be deleted
     assert original.exists()
@@ -318,7 +318,7 @@ async def test_rm_broken_symlink(tmp_path: Path) -> None:
     data = json.loads(result[0].text)
 
     assert data["status"] == "success"
-    assert data["operation"] == "symlink_removal"
+    assert data["operation"] == "trash"
     assert not os.path.lexists(broken)
 
 
@@ -337,7 +337,7 @@ async def test_rm_dir_symlink(tmp_path: Path) -> None:
     data = json.loads(result[0].text)
 
     assert data["status"] == "success"
-    assert data["operation"] == "symlink_removal"
+    assert data["operation"] == "trash"
     assert not os.path.lexists(link_dir)
     # Original directory and contents must NOT be deleted
     assert original_dir.exists()

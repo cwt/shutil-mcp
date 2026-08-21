@@ -23,7 +23,8 @@ additional functionality:
   - `mv` and `cp` verify destination data and file size integrity before
     removing origin files.
   - `chmod` and `chown` record previous states and rollback on errors.
-  - `rm` offers soft-delete staging into `.trash` paired with `restore`.
+  - `rm` always soft-deletes into `.trash`, paired with `restore` to recover
+    and `empty_trash` to purge.
   - `unpack_archive` scans archive contents to block zip-slip directory
     traversal vulnerabilities.
 - **API Key Security**: API key validation uses `secrets.compare_digest` to

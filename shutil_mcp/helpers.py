@@ -4,10 +4,12 @@ Provides common utilities for path validation and performance setup.
 """
 
 import json
+import os
 import secrets
+import shutil
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 
 class APIKeyMiddleware:
@@ -199,6 +201,125 @@ def get_trash_dir(path: Path) -> Path:
     trash_dir = validate_path_in_jail(trash_dir)
     trash_dir.mkdir(parents=True, exist_ok=True)
     return trash_dir
+
+
+TRASH_META_DIRNAME = ".meta"
+
+
+def get_dir_size(path: Path) -> int:
+    """Return total size in bytes of all regular files under ``path``.
+
+    Symlinks are not followed, so their targets are not counted (this avoids
+    double-counting and symlink loops).
+    """
+    total = 0
+    stack = [path]
+    while stack:
+        current = stack.pop()
+        try:
+            with os.scandir(current) as scandir_it:
+                for entry in scandir_it:
+                    try:
+                        if entry.is_symlink():
+                            continue
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(Path(entry.path))
+                        else:
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        continue
+        except OSError:
+            continue
+    return total
+
+
+def write_trash_meta(
+    trash_dir: Path, item_name: str, original_path: str, trashed_at: int
+) -> None:
+    """Persist metadata (original path + deletion time) for a trashed item."""
+    meta_dir = trash_dir / TRASH_META_DIRNAME
+    meta_dir.mkdir(parents=True, exist_ok=True)
+    meta_path = meta_dir / f"{item_name}.json"
+    meta = {"original_path": original_path, "trashed_at": trashed_at}
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
+
+
+def read_trash_meta(trash_dir: Path, item_name: str) -> dict[str, object]:
+    """Read metadata for a trashed item, returning ``{}`` if unavailable."""
+    meta_path = trash_dir / TRASH_META_DIRNAME / f"{item_name}.json"
+    try:
+        raw = meta_path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def build_trash_report(trash_dir: Path) -> dict[str, object]:
+    """Build a report describing trash size, storage share, and contents.
+
+    The report contains:
+      - ``path``: the trash directory
+      - ``item_count``: number of trashed items
+      - ``total_bytes``: sum of trashed item sizes
+      - ``storage``: total/used/free bytes plus ``trash_bytes`` and
+        ``trash_used_percent`` (share of total storage occupied by trash)
+      - ``contents``: list of ``{name, original_path, trashed_at, size_bytes}``
+    """
+    trash_dir = validate_path_in_jail(trash_dir)
+
+    contents: list[dict[str, object]] = []
+    try:
+        with os.scandir(trash_dir) as scandir_it:
+            for entry in scandir_it:
+                if entry.name == TRASH_META_DIRNAME:
+                    continue
+                item_path = Path(entry.path)
+                if entry.is_symlink():
+                    size = 0
+                elif entry.is_dir(follow_symlinks=False):
+                    size = get_dir_size(item_path)
+                else:
+                    try:
+                        size = entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        size = 0
+                meta = read_trash_meta(trash_dir, entry.name)
+                contents.append(
+                    {
+                        "name": entry.name,
+                        "original_path": meta.get("original_path", entry.name),
+                        "trashed_at": meta.get("trashed_at", 0),
+                        "size_bytes": size,
+                    }
+                )
+    except OSError:
+        pass
+
+    contents.sort(key=lambda c: cast(int, c["trashed_at"]))
+
+    total_bytes = sum(cast(int, c["size_bytes"]) for c in contents)
+    usage = shutil.disk_usage(str(trash_dir))
+    trash_used_percent = (
+        round((total_bytes / usage.total) * 100, 4) if usage.total > 0 else 0.0
+    )
+
+    return {
+        "path": str(trash_dir),
+        "item_count": len(contents),
+        "total_bytes": total_bytes,
+        "storage": {
+            "total_bytes": usage.total,
+            "used_bytes": usage.used,
+            "free_bytes": usage.free,
+            "trash_bytes": total_bytes,
+            "trash_used_percent": trash_used_percent,
+        },
+        "contents": contents,
+    }
 
 
 def validate_archive_safety(

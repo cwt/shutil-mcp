@@ -18,8 +18,9 @@ precise and direct consumption of file system data by AI models.
 - **Reversible Mutations & Undo**: `chmod` and `chown` return previous modes
   and ownership to facilitate immediate undo/redo, with automatic rollback
   on failure.
-- **Soft-Deletion & Recovery**: `rm` supports `trash=True` soft-deletion with
-  a matching `restore` tool.
+- **Safe Deletion & Recovery**: `rm` always soft-deletes into `.trash` (never
+  permanently deletes) and reports trash size and storage usage; `restore`
+  recovers items and `empty_trash` purges the trash.
 - **Zip-Slip Protection**: `unpack_archive` validates all archive member paths
   against directory traversal / zip-slip attacks.
 - **Detailed Metadata**: Tools like `ls` and `stat` provide comprehensive
@@ -32,8 +33,9 @@ precise and direct consumption of file system data by AI models.
 - `ls`: List directory contents with detailed metadata.
 - `cp`: Copy files or directories recursively with verification.
 - `mv`: Move/rename files or directories with safe pre-removal verification.
-- `rm`: Remove files or directories (supports `trash=True` soft-deletion).
-- `restore`: Restore files or directories from trash.
+- `rm`: Soft-delete by moving to `.trash`; never permanently deletes and reports trash statistics.
+- `restore`: Restore files or directories from trash (defaults to original path).
+- `empty_trash`: Permanently purge the trash folder (only after explicit user confirmation).
 - `chmod`: Change file/directory permissions with rollback and previous mode.
 - `chown`: Change file/directory ownership with rollback and previous owner.
 - `disk_usage`: Get disk usage statistics for a path.

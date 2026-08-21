@@ -6,19 +6,26 @@ Provides 'cp', 'mv', 'rm', 'restore', 'chown', 'chmod', 'which', and 'cat' tools
 import asyncio
 import json
 import os
+import shutil
 import stat as stat_module
 import time
 import uuid
 from pathlib import Path
+from typing import cast
 
 import aioshutil
 from mcp.types import TextContent
 
 from shutil_mcp.decorators import handle_errors, json_tool
 from shutil_mcp.helpers import (
+    TRASH_META_DIRNAME,
+    build_trash_report,
+    get_dir_size,
     get_trash_dir,
+    read_trash_meta,
     validate_path,
     validate_path_in_jail,
+    write_trash_meta,
 )
 from shutil_mcp.server import mcp
 
@@ -243,61 +250,52 @@ async def mv(
 @json_tool
 async def rm(
     path: str,
-    recursive: bool = False,
-    trash: bool = False,
 ) -> list[TextContent]:
-    """Remove files or directories, with optional soft-delete (trash) support.
+    """Remove a file or directory by moving it to the trash (soft-delete).
+
+    rm NEVER permanently deletes anything. The target is moved into a .trash
+    folder so it can be recovered later with the restore tool. The JSON response
+    reports the current trash size, what share of total storage it occupies, and
+    the contents of the trash (original path + deletion timestamp).
+
+    To permanently purge the trash, use the empty_trash tool -- but only after
+    the user has explicitly confirmed.
 
     Args:
-        path: Path to remove
-        recursive: Whether to remove recursively if it's a directory (default: False)
-        trash: If True, move to .trash folder for undo capability instead of permanent deletion (default: False)
+        path: Path to remove (soft-deleted into trash)
     """
     target = validate_path(path)
     loop = asyncio.get_running_loop()
 
-    if trash:
-        trash_dir = get_trash_dir(target)
-        trash_name = f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{target.name}"
-        trash_dest = trash_dir / trash_name
-        trash_dest = validate_path_in_jail(trash_dest)
+    trash_dir = get_trash_dir(target)
+    trashed_at = int(time.time())
+    trash_name = f"{trashed_at}_{uuid.uuid4().hex[:8]}_{target.name}"
+    trash_dest = trash_dir / trash_name
+    trash_dest = validate_path_in_jail(trash_dest)
 
-        await aioshutil.move(target, trash_dest)
+    await aioshutil.move(target, trash_dest)
 
-        return json.dumps(
-            {
-                "operation": "trash",
-                "path": str(target),
-                "trash_path": str(trash_dest),
-                "status": "success",
-            },
-            separators=(",", ":"),
-        )  # type: ignore[return-value]
+    def _write_meta() -> None:
+        write_trash_meta(trash_dir, trash_name, str(target), trashed_at)
 
-    if target.is_symlink():
+    # Metadata is best-effort; a failure must not fail the (already completed) move.
+    try:
+        await loop.run_in_executor(None, _write_meta)
+    except Exception:
+        pass
 
-        def _unlink_symlink() -> None:
-            os.unlink(target)
-
-        await loop.run_in_executor(None, _unlink_symlink)
-        op_type = "symlink_removal"
-    elif target.is_dir():
-        if not recursive:
-            raise ValueError(
-                f"'{target}' is a directory. Use recursive=True to remove."
-            )
-        await aioshutil.rmtree(target)
-        op_type = "directory_removal"
-    else:
-
-        def _remove_file() -> None:
-            os.remove(target)
-
-        await loop.run_in_executor(None, _remove_file)
-        op_type = "file_removal"
+    trash_report = await loop.run_in_executor(
+        None, build_trash_report, trash_dir
+    )
 
     return json.dumps(
-        {"operation": op_type, "path": str(target), "status": "success"},
+        {
+            "operation": "trash",
+            "path": str(target),
+            "trash_path": str(trash_dest),
+            "status": "success",
+            "trash": trash_report,
+        },
         separators=(",", ":"),
     )  # type: ignore[return-value]
 
@@ -307,17 +305,33 @@ async def rm(
 @json_tool
 async def restore(
     trash_path: str,
-    dst: str,
+    dst: str | None = None,
     overwrite: bool = False,
 ) -> list[TextContent]:
     """Restore a file or directory from the trash folder.
 
+    By default the item is restored to its original path (recorded when it was
+    trashed). Provide ``dst`` to restore to a different location.
+
     Args:
         trash_path: Path to the trashed item
-        dst: Destination path to restore to
-        overwrite: Whether to overwrite existing destination (default: False)
+        dst: Destination path to restore to (default: original path from trash metadata)
+        overwrite: Whether to overwrite an existing destination (default: False)
     """
     source = validate_path(trash_path)
+    trash_dir = source.parent
+    loop = asyncio.get_running_loop()
+
+    if dst is None:
+        meta = read_trash_meta(trash_dir, source.name)
+        original = meta.get("original_path")
+        if not original or not isinstance(original, str):
+            raise ValueError(
+                f"No destination provided and no original path recorded for "
+                f"'{source}'. Pass dst explicitly."
+            )
+        dst = original
+
     dest = Path(dst).absolute()
     dest = validate_path_in_jail(dest)
 
@@ -330,12 +344,97 @@ async def restore(
 
     await aioshutil.move(source, dest)
 
+    def _cleanup_meta() -> None:
+        meta_path = trash_dir / TRASH_META_DIRNAME / f"{source.name}.json"
+        try:
+            meta_path.unlink()
+        except OSError:
+            pass
+
+    await loop.run_in_executor(None, _cleanup_meta)
+
     return json.dumps(
         {
             "operation": "restore",
             "src": str(source),
             "dst": str(dest),
             "verified": True,
+            "status": "success",
+        },
+        separators=(",", ":"),
+    )  # type: ignore[return-value]
+
+
+@mcp.tool()
+@handle_errors
+@json_tool
+async def empty_trash(path: str = ".") -> list[TextContent]:
+    """Permanently delete everything in the trash folder.
+
+    WARNING: This is the ONLY operation that permanently destroys data. It
+    irreversibly removes all trashed items. Only call this after the user has
+    explicitly confirmed they want to purge the trash.
+
+    Args:
+        path: Any path inside the jail; its trash folder (.trash) is emptied
+              (default: current directory).
+    """
+    anchor = validate_path(path)
+    if mcp.jail_path is not None:
+        trash_dir = mcp.jail_path.resolve() / ".trash"
+    else:
+        base = anchor.resolve()
+        if not base.is_dir():
+            base = base.parent
+        trash_dir = base / ".trash"
+    trash_dir = validate_path_in_jail(trash_dir)
+    loop = asyncio.get_running_loop()
+
+    def _empty() -> dict[str, object]:
+        removed: list[dict[str, object]] = []
+        total_bytes = 0
+        try:
+            with os.scandir(trash_dir) as scandir_it:
+                for entry in scandir_it:
+                    item_path = Path(entry.path)
+                    if entry.name != TRASH_META_DIRNAME:
+                        if entry.is_symlink():
+                            size = 0
+                        elif entry.is_dir(follow_symlinks=False):
+                            try:
+                                size = get_dir_size(item_path)
+                            except OSError:
+                                size = 0
+                        else:
+                            try:
+                                size = entry.stat(follow_symlinks=False).st_size
+                            except OSError:
+                                size = 0
+                        removed.append({"name": entry.name, "size_bytes": size})
+                        total_bytes += size
+                    if (
+                        entry.is_dir(follow_symlinks=False)
+                        and not entry.is_symlink()
+                    ):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+        except FileNotFoundError:
+            pass
+        # Keep the (now empty) trash folder ready for future deletions.
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        return {"removed": removed, "total_bytes": total_bytes}
+
+    result = await loop.run_in_executor(None, _empty)
+
+    removed_list = cast("list[dict[str, object]]", result["removed"])
+    return json.dumps(
+        {
+            "operation": "empty_trash",
+            "trash_path": str(trash_dir),
+            "item_count": len(removed_list),
+            "total_bytes": cast(int, result["total_bytes"]),
+            "removed": removed_list,
             "status": "success",
         },
         separators=(",", ":"),
