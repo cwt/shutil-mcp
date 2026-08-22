@@ -13,6 +13,8 @@ precise and direct consumption of file system data by AI models.
 - **Asynchronous Operations**: Leverages `aioshutil` and thread executors
   for non-blocking file system tasks.
 - **JSON Output**: All tools return minified JSON, optimized for AI agents.
+- **Tool Annotations & Hints**: Declares `readOnlyHint`, `destructiveHint`,
+  `idempotentHint`, and `openWorldHint` on every tool for agent safety and host warnings.
 - **Jail Support**: Restrict file system access to a specific directory tree
   for security.
 - **Verification & Integrity**: `mv` and `cp` verify destination data before
@@ -22,7 +24,7 @@ precise and direct consumption of file system data by AI models.
   on failure.
 - **Safe Deletion & Recovery**: `rm` always soft-deletes into `.trash` (never
   permanently deletes) and reports trash size and storage usage; `restore`
-  recovers items and `empty_trash` purges the trash.
+  recovers items, `gc_trash` collects expired items, and `empty_trash` purges the trash.
 - **Zip-Slip Protection**: `unpack_archive` validates all archive member paths
   against directory traversal / zip-slip attacks.
 - **Detailed Metadata**: Tools like `ls` and `stat` provide comprehensive
@@ -33,13 +35,17 @@ precise and direct consumption of file system data by AI models.
 ## Available Tools
 
 - `ls`: List directory contents with detailed metadata.
-- `cp`: Copy files or directories recursively with verification.
+- `cp`: Copy files or directories recursively with verification and overwrite protection.
 - `mv`: Move/rename files or directories with safe pre-removal verification.
 - `rm`: Soft-delete by moving to `.trash`; never permanently deletes and reports trash statistics.
 - `restore`: Restore files or directories from trash (defaults to original path).
 - `empty_trash`: Permanently purge the trash folder (only after explicit user confirmation).
+- `gc_trash`: Garbage-collect expired trash entries based on age threshold.
+- `mkdir`: Create a new directory.
+- `touch`: Create an empty file or update file timestamps.
 - `chmod`: Change file/directory permissions with rollback and previous mode.
 - `chown`: Change file/directory ownership with rollback and previous owner.
+- `stat`: Get detailed file or directory metadata.
 - `disk_usage`: Get disk usage statistics for a path.
 - `which`: Find the path to an executable.
 - `cat`: Read file content, optionally limited to a specific line range.

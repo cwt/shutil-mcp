@@ -70,14 +70,14 @@ async def cp(
 
 When adding a new MCP tool:
 
-1. **Use the `@mcp.tool()` decorator**
+1. **Use the `@mcp.tool()` decorator with `ToolAnnotations`** (declaring `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` as explicit booleans)
 2. **Apply `@handle_errors` decorator** for file system operations
 3. **Apply `@json_tool` decorator** to return JSON output
-4. **Follow parameter ordering**: required params first, then optional params
-5. **Validate paths** using `validate_path(path)` or `validate_dir_path(path)`
-6. **Ensure all operations are asynchronous** using `aioshutil` or running
-   blocking calls in executors
-7. **Return minified JSON** for efficiency
+4. **Wrap handler body in `try...except Exception as e:`** returning formatted error response
+5. **Follow parameter ordering**: required params first, then optional params
+6. **Validate paths** using `validate_path(path)` or `validate_dir_path(path)`
+7. **Ensure all operations are asynchronous** using `aioshutil` or running blocking calls in executors
+8. **Return minified JSON** for efficiency
 
 ## Code Quality
 
