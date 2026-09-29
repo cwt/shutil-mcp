@@ -12,7 +12,7 @@ shutil-mcp MCP server.
 
 ## MCP Server Architecture
 
-This project uses a custom `SHUTIL_MCP` subclass of `FastMCP` to provide
+This project uses a custom `ShutilMCP` subclass of `MCPServer` to provide
 additional functionality:
 
 - **Jail Path Support**: The `jail_path` property allows restricting file
@@ -70,7 +70,7 @@ async def cp(
 
 When adding a new MCP tool:
 
-1. **Use the `@mcp.tool()` decorator with `ToolAnnotations`** (declaring `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` as explicit booleans)
+1. **Use the `@mcp.tool()` decorator with `ToolAnnotations`** (declaring `read_only_hint`, `destructive_hint`, `idempotent_hint`, and `open_world_hint` as explicit booleans)
 2. **Apply `@handle_errors` decorator** for file system operations
 3. **Apply `@json_tool` decorator** to return JSON output
 4. **Wrap handler body in `try...except Exception as e:`** returning formatted error response
@@ -87,10 +87,10 @@ Before committing changes, always run the following scripts:
 # 1. Run linting and auto-fix issues
 ./scripts/lint-check-and-fix.sh
 
-# 2. Run type checking
+# 2. Run type checking (strict mode)
 ./scripts/type-check.sh
 
-# 3. Format code before final commit
+# 3. Format code before final commit (cross-platform Linux & macOS)
 ./scripts/code-format.sh
 ```
 
@@ -99,11 +99,31 @@ Before committing changes, always run the following scripts:
 Run the test suite using:
 
 ```bash
-poetry run pytest
+poetry run pytest -n auto
 ```
 
 or for the full test script:
 
 ```bash
 ./scripts/runtest.sh
+```
+
+## Release Process
+
+**Important**: When tagging a new version, always update `pyproject.toml` first
+and commit it before creating the tag. This ensures the tag includes the correct
+version number.
+
+### Workflow
+
+```bash
+# 1. Update version in pyproject.toml
+# Edit pyproject.toml and change the version field:
+# version = "1.0.0"
+
+# 2. Commit the version change FIRST
+hg commit pyproject.toml -m "chore: Bump version to v1.0.0"
+
+# 3. Create the tag (it will include the version commit)
+hg tag -m "Release v1.0.0" v1.0.0
 ```

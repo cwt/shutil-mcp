@@ -12,6 +12,4 @@ async def test_all_tools_registered() -> None:
     registered_names = {t.name for t in registered_tools}
 
     for name in tool_names:
-        assert (
-            name in registered_names
-        ), f"Tool '{name}' is not registered on mcp"
+        assert name in registered_names, f"Tool '{name}' is not registered on mcp"

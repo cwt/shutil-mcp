@@ -34,10 +34,10 @@ from shutil_mcp.server import mcp
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -77,9 +77,8 @@ async def cp(
         loop = asyncio.get_running_loop()
 
         if source.is_dir():
-            if (
-                dest.resolve() == source.resolve()
-                or dest.resolve().is_relative_to(source.resolve())
+            if dest.resolve() == source.resolve() or dest.resolve().is_relative_to(
+                source.resolve()
             ):
                 raise ValueError(
                     f"Cannot copy directory '{source}' into itself "
@@ -112,10 +111,7 @@ async def cp(
                                 )
                             if dst_item.is_symlink():
                                 continue
-                            if (
-                                src_item.stat().st_size
-                                != dst_item.stat().st_size
-                            ):
+                            if src_item.stat().st_size != dst_item.stat().st_size:
                                 raise OSError(
                                     f"Copy verification failed: size mismatch "
                                     f"for '{rel}' "
@@ -133,9 +129,7 @@ async def cp(
 
             await loop.run_in_executor(None, _verify_dir_copy)
         else:
-            await aioshutil.copy2(
-                source, target_dest, follow_symlinks=follow_symlinks
-            )
+            await aioshutil.copy2(source, target_dest, follow_symlinks=follow_symlinks)
             op_type = "file_copy"
 
             def _verify_copy() -> None:
@@ -145,9 +139,7 @@ async def cp(
                         f"does not exist"
                     )
                 src_size = source.stat(follow_symlinks=follow_symlinks).st_size
-                dst_size = target_dest.stat(
-                    follow_symlinks=follow_symlinks
-                ).st_size
+                dst_size = target_dest.stat(follow_symlinks=follow_symlinks).st_size
                 if src_size != dst_size:
                     raise OSError(
                         f"Copy verification failed: size mismatch "
@@ -172,10 +164,10 @@ async def cp(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=False,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=False,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -275,15 +267,11 @@ async def mv(
                 tmp_target = validate_path_in_jail(tmp_target)
 
                 try:
-                    await aioshutil.copy2(
-                        source, tmp_target, follow_symlinks=True
-                    )
+                    await aioshutil.copy2(source, tmp_target, follow_symlinks=True)
 
                     def _verify_and_finalize() -> None:
                         if not tmp_target.exists():
-                            raise OSError(
-                                "Temporary destination file not found"
-                            )
+                            raise OSError("Temporary destination file not found")
                         src_size = source.stat().st_size
                         dst_size = tmp_target.stat().st_size
                         if src_size != dst_size:
@@ -321,10 +309,10 @@ async def mv(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=False,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=False,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -367,9 +355,7 @@ async def rm(
         except Exception:
             pass
 
-        trash_report = await loop.run_in_executor(
-            None, build_trash_report, trash_dir
-        )
+        trash_report = await loop.run_in_executor(None, build_trash_report, trash_dir)
 
         return json.dumps(
             {
@@ -387,10 +373,10 @@ async def rm(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=False,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=False,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -467,10 +453,10 @@ async def restore(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -515,14 +501,10 @@ async def empty_trash(path: str = ".") -> list[TextContent]:
                                     size = 0
                             else:
                                 try:
-                                    size = entry.stat(
-                                        follow_symlinks=False
-                                    ).st_size
+                                    size = entry.stat(follow_symlinks=False).st_size
                                 except OSError:
                                     size = 0
-                            removed.append(
-                                {"name": entry.name, "size_bytes": size}
-                            )
+                            removed.append({"name": entry.name, "size_bytes": size})
                             total_bytes += size
                         if (
                             entry.is_dir(follow_symlinks=False)
@@ -557,10 +539,10 @@ async def empty_trash(path: str = ".") -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=True,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=True,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -607,9 +589,7 @@ async def gc_trash(max_age_seconds: int = 86400) -> list[TextContent]:
                             entry.is_symlink() and not entry.exists()
                         ):
                             try:
-                                mtime = entry.stat(
-                                    follow_symlinks=False
-                                ).st_mtime
+                                mtime = entry.stat(follow_symlinks=False).st_mtime
                             except OSError:
                                 continue
                             if now - mtime > max_age_seconds:
@@ -655,10 +635,10 @@ async def gc_trash(max_age_seconds: int = 86400) -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -691,9 +671,7 @@ async def chmod(path: str, mode: int | str) -> list[TextContent]:
         loop = asyncio.get_running_loop()
 
         def _get_mode() -> int:
-            return stat_module.S_IMODE(
-                target.stat(follow_symlinks=False).st_mode
-            )
+            return stat_module.S_IMODE(target.stat(follow_symlinks=False).st_mode)
 
         prev_mode_int = await loop.run_in_executor(None, _get_mode)
         previous_mode_oct = oct(prev_mode_int)
@@ -726,10 +704,10 @@ async def chmod(path: str, mode: int | str) -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -758,9 +736,7 @@ async def chown(
 
         prev_uid, prev_gid = await loop.run_in_executor(None, _get_owner)
 
-        final_user = (
-            int(user) if isinstance(user, str) and user.isdigit() else user
-        )
+        final_user = int(user) if isinstance(user, str) and user.isdigit() else user
         final_group = (
             int(group) if isinstance(group, str) and group.isdigit() else group
         )
@@ -769,9 +745,7 @@ async def chown(
             await aioshutil.chown(str(target), user=final_user, group=final_group)  # type: ignore[arg-type]
         except Exception as err:
             try:
-                await aioshutil.chown(
-                    str(target), user=prev_uid, group=prev_gid
-                )
+                await aioshutil.chown(str(target), user=prev_uid, group=prev_gid)
             except Exception:
                 pass
             raise err
@@ -794,10 +768,10 @@ async def chown(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -826,10 +800,10 @@ async def which(cmd: str, path: str | None = None) -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -866,10 +840,10 @@ async def mkdir(path: str, parents: bool = True) -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=False,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=False,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -921,10 +895,10 @@ def _read_file_lines(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors

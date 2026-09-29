@@ -58,33 +58,94 @@ precise and direct consumption of file system data by AI models.
 
 ## Installation
 
+### Using Poetry (Recommended)
+
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd shutil-mcp
+
+# Install dependencies
+poetry install
+
+# Optional: Install with performance enhancements (uvloop / winloop)
+poetry install --all-extras
+```
+
+### Using pip
+
+```bash
+# Install from PyPI
 pip install shutil-mcp
+
+# Or install in editable mode with speed dependencies
+pip install -e ".[speed]"
 ```
 
 ## Usage
 
-### Run with stdio transport
+### Standard Input/Output (stdio) - Default Mode
 
 ```bash
 shutil-mcp --transport stdio
 ```
 
-### Run with jail restriction
+With jail restriction:
 
 ```bash
 shutil-mcp --transport stdio --jail /path/to/projects
 ```
 
-### Run as SSE server
+### HTTP Transports (SSE and/or Streamable HTTP)
+
+For web-based MCP clients (such as llama.cpp WebUI), you can run with HTTP transport:
 
 ```bash
+# SSE only (compatible with llama.cpp WebUI)
 shutil-mcp --transport sse --jail /path/to/projects --port 8000
+
+# Streamable HTTP only
+shutil-mcp --transport streamable-http --jail /path/to/projects --port 8000
+
+# Both SSE and Streamable HTTP on the same server
+shutil-mcp --transport sse streamable-http --jail /path/to/projects --port 8000
 ```
+
+**Endpoints:**
+
+- SSE: `http://localhost:8000/sse`
+- Streamable HTTP: `http://localhost:8000/mcp`
+
+**Options:**
+
+- `--transport`: Transport protocol(s) (`stdio`, `sse`, `streamable-http`, default: `stdio`)
+- `--port`: Port to listen on (default: 8000)
+- `--host`: Host to bind to (default: 0.0.0.0)
+- `--jail`: **Required for HTTP transports.** Restrict file system operations to this directory tree for security.
+- `--api-key`: **Optional.** Enable mandatory API key authentication (`X-API-Key` or `API-Key` header).
 
 ## Development
 
 See [DEVELOPMENT.md](DEVELOPMENT.md) for detailed development instructions.
+
+### Running Tests
+
+```bash
+poetry run pytest -n auto
+```
+
+### Code Quality
+
+```bash
+# Run linting and auto-fix issues
+./scripts/lint-check-and-fix.sh
+
+# Run static type checking (strict mode)
+./scripts/type-check.sh
+
+# Run code formatter and trailing whitespace cleanup (cross-platform Linux & macOS)
+./scripts/code-format.sh
+```
 
 ## License
 

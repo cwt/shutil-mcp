@@ -37,6 +37,36 @@ EXPECTED_MUTATING_NON_DESTRUCTIVE_TOOLS = {
 }
 
 
+def _get_hint(annotations: ToolAnnotations, name: str) -> bool | None:
+    snake_map = {
+        "readOnlyHint": "read_only_hint",
+        "destructiveHint": "destructive_hint",
+        "idempotentHint": "idempotent_hint",
+        "openWorldHint": "open_world_hint",
+    }
+    snake = snake_map.get(name, name)
+    if hasattr(annotations, snake):
+        val = getattr(annotations, snake)
+        if isinstance(val, bool):
+            return val
+    val = getattr(annotations, name, None)
+    if isinstance(val, bool):
+        return val
+    return None
+
+
+def _get_input_schema(tool: object) -> dict[str, object] | None:
+    if hasattr(tool, "input_schema"):
+        schema = getattr(tool, "input_schema")
+        if isinstance(schema, dict):
+            return schema
+    if hasattr(tool, "inputSchema"):
+        schema = getattr(tool, "inputSchema")
+        if isinstance(schema, dict):
+            return schema
+    return None
+
+
 @pytest.mark.asyncio
 async def test_all_tools_have_all_four_hints_declared() -> None:
     """Verify every registered tool declares all 4 hints as explicit booleans."""
@@ -52,18 +82,23 @@ async def test_all_tools_have_all_four_hints_declared() -> None:
         ), f"Tool '{tool.name}' annotations not ToolAnnotations instance"
 
         annotations = tool.annotations
+        read_only = _get_hint(annotations, "readOnlyHint")
+        destructive = _get_hint(annotations, "destructiveHint")
+        idempotent = _get_hint(annotations, "idempotentHint")
+        open_world = _get_hint(annotations, "openWorldHint")
+
         assert isinstance(
-            annotations.readOnlyHint, bool
-        ), f"Tool '{tool.name}' readOnlyHint is not bool: {annotations.readOnlyHint}"
+            read_only, bool
+        ), f"Tool '{tool.name}' readOnlyHint is not bool: {read_only}"
         assert isinstance(
-            annotations.destructiveHint, bool
-        ), f"Tool '{tool.name}' destructiveHint not bool: {annotations.destructiveHint}"
+            destructive, bool
+        ), f"Tool '{tool.name}' destructiveHint not bool: {destructive}"
         assert isinstance(
-            annotations.idempotentHint, bool
-        ), f"Tool '{tool.name}' idempotentHint not bool: {annotations.idempotentHint}"
+            idempotent, bool
+        ), f"Tool '{tool.name}' idempotentHint not bool: {idempotent}"
         assert isinstance(
-            annotations.openWorldHint, bool
-        ), f"Tool '{tool.name}' openWorldHint not bool: {annotations.openWorldHint}"
+            open_world, bool
+        ), f"Tool '{tool.name}' openWorldHint not bool: {open_world}"
 
 
 @pytest.mark.asyncio
@@ -77,10 +112,10 @@ async def test_destructive_tools_classification() -> None:
         tool = tool_map[name]
         assert tool.annotations is not None
         assert (
-            tool.annotations.destructiveHint is True
+            _get_hint(tool.annotations, "destructiveHint") is True
         ), f"Tool '{name}' should have destructiveHint=True"
         assert (
-            tool.annotations.readOnlyHint is False
+            _get_hint(tool.annotations, "readOnlyHint") is False
         ), f"Tool '{name}' should have readOnlyHint=False"
 
 
@@ -95,10 +130,10 @@ async def test_read_only_tools_classification() -> None:
         tool = tool_map[name]
         assert tool.annotations is not None
         assert (
-            tool.annotations.readOnlyHint is True
+            _get_hint(tool.annotations, "readOnlyHint") is True
         ), f"Tool '{name}' should have readOnlyHint=True"
         assert (
-            tool.annotations.destructiveHint is False
+            _get_hint(tool.annotations, "destructiveHint") is False
         ), f"Tool '{name}' should have destructiveHint=False"
 
 
@@ -113,10 +148,10 @@ async def test_mutating_non_destructive_tools_classification() -> None:
         tool = tool_map[name]
         assert tool.annotations is not None
         assert (
-            tool.annotations.readOnlyHint is False
+            _get_hint(tool.annotations, "readOnlyHint") is False
         ), f"Tool '{name}' should have readOnlyHint=False"
         assert (
-            tool.annotations.destructiveHint is False
+            _get_hint(tool.annotations, "destructiveHint") is False
         ), f"Tool '{name}' should have destructiveHint=False"
 
 
@@ -127,17 +162,16 @@ async def test_all_tools_declare_input_schema() -> None:
     assert len(tools) > 0
 
     for tool in tools:
-        assert (
-            tool.inputSchema is not None
-        ), f"Tool '{tool.name}' is missing inputSchema"
+        input_schema = _get_input_schema(tool)
+        assert input_schema is not None, f"Tool '{tool.name}' is missing inputSchema"
         assert isinstance(
-            tool.inputSchema, dict
+            input_schema, dict
         ), f"Tool '{tool.name}' inputSchema is not a dict"
         assert (
-            tool.inputSchema.get("type") == "object"
+            input_schema.get("type") == "object"
         ), f"Tool '{tool.name}' inputSchema type is not 'object'"
         assert (
-            "properties" in tool.inputSchema
+            "properties" in input_schema
         ), f"Tool '{tool.name}' inputSchema missing 'properties'"
 
 

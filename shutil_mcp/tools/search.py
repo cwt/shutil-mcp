@@ -18,10 +18,10 @@ from shutil_mcp.server import mcp
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -65,10 +65,10 @@ async def glob(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -113,9 +113,7 @@ async def grep(
                 if _is_binary(filepath):
                     return
                 try:
-                    with open(
-                        filepath, encoding="utf-8", errors="replace"
-                    ) as f:
+                    with open(filepath, encoding="utf-8", errors="replace") as f:
                         for i, line in enumerate(f, 1):
                             if len(matches) >= max_results:
                                 break
@@ -168,10 +166,10 @@ async def grep(
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -234,18 +232,14 @@ async def tree(
                         continue
 
                     if is_dir:
-                        entries.append(
-                            _build_tree(entry, depth + 1, set(cur_visited))
-                        )
+                        entries.append(_build_tree(entry, depth + 1, set(cur_visited)))
                     else:
                         e: dict[str, object] = {
                             "name": entry.name,
                             "type": "symlink" if is_symlink else "file",
                         }
                         try:
-                            e["size"] = entry.stat(
-                                follow_symlinks=False
-                            ).st_size
+                            e["size"] = entry.stat(follow_symlinks=False).st_size
                         except Exception:
                             pass
                         entries.append(e)

@@ -35,9 +35,7 @@ async def test_api_key_middleware() -> None:
     # 1. Non-http scope passes through
     non_http_received = False
 
-    async def non_http_app(
-        scope: dict[str, Any], receive: Any, send: Any
-    ) -> None:
+    async def non_http_app(scope: dict[str, Any], receive: Any, send: Any) -> None:
         nonlocal non_http_received
         non_http_received = True
 
@@ -128,9 +126,7 @@ def test_validate_dir_path(tmp_path: Path) -> None:
     # 3. Create if missing
     new_d = tmp_path / "auto_created_dir"
     assert not new_d.exists()
-    assert (
-        validate_dir_path(str(new_d), create_if_missing=True) == new_d.resolve()
-    )
+    assert validate_dir_path(str(new_d), create_if_missing=True) == new_d.resolve()
     assert new_d.exists()
 
 

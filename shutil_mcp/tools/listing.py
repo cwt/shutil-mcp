@@ -20,10 +20,10 @@ from shutil_mcp.server import mcp
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -99,10 +99,10 @@ async def ls(path: str = ".") -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors
@@ -125,9 +125,7 @@ async def disk_usage(path: str = ".") -> list[TextContent]:
                 "used": usage.used,
                 "free": usage.free,
                 "percent_used": (
-                    round((usage.used / usage.total) * 100, 2)
-                    if usage.total > 0
-                    else 0
+                    round((usage.used / usage.total) * 100, 2) if usage.total > 0 else 0
                 ),
             },
             separators=(",", ":"),
@@ -138,10 +136,10 @@ async def disk_usage(path: str = ".") -> list[TextContent]:
 
 @mcp.tool(
     annotations=ToolAnnotations(
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
+        read_only_hint=True,
+        destructive_hint=False,
+        idempotent_hint=True,
+        open_world_hint=False,
     )
 )
 @handle_errors

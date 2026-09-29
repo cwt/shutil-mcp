@@ -36,9 +36,7 @@ class APIKeyMiddleware:
 
         # Check API key from headers
         headers = dict(scope.get("headers", []))
-        provided_key_bytes = headers.get(b"x-api-key") or headers.get(
-            b"api-key"
-        )
+        provided_key_bytes = headers.get(b"x-api-key") or headers.get(b"api-key")
 
         is_authorized = False
         if provided_key_bytes:
@@ -398,9 +396,7 @@ def validate_archive_safety(
                     )
                 if member.islnk() or member.issym():
                     link_target = member.linkname
-                    if link_target.startswith("/") or link_target.startswith(
-                        "\\"
-                    ):
+                    if link_target.startswith("/") or link_target.startswith("\\"):
                         raise ValueError(
                             f"Unsafe absolute symlink in archive member: "
                             f"'{member.name}' -> '{link_target}'"

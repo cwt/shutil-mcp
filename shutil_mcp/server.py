@@ -5,11 +5,11 @@ Creates and configures the FastMCP server for shutil-mcp operations.
 
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 
 
-class ShutilMCP(FastMCP):
-    """Custom FastMCP subclass with jail path support."""
+class ShutilMCP(MCPServer):
+    """Custom MCP server subclass with jail path support."""
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]

@@ -97,12 +97,10 @@ def main() -> None:
         if transports == {"stdio"}:
             if args.jail:
                 mcp.jail_path = args.jail
-                print(f"Jail path set to: {args.jail}")
+                print(f"Jail path set to: {args.jail}", file=sys.stderr)
             mcp.run(transport="stdio")
         elif "stdio" in transports:
-            print(
-                "Error: Cannot mix stdio with HTTP transports", file=sys.stderr
-            )
+            print("Error: Cannot mix stdio with HTTP transports", file=sys.stderr)
             sys.exit(1)
         elif transports.issubset({"sse", "streamable-http"}):
             import uvicorn
@@ -113,55 +111,68 @@ def main() -> None:
             from shutil_mcp.helpers import APIKeyMiddleware
 
             mcp.jail_path = args.jail
-            mcp.settings.json_response = True
+            if hasattr(mcp.settings, "json_response"):
+                mcp.settings.json_response = True
+
+            sse_path = getattr(mcp.settings, "sse_path", "/sse")
+            streamable_http_path = getattr(mcp.settings, "streamable_http_path", "/mcp")
 
             # SSE and Streamable HTTP app setup
+            # We must create these apps before Starlette() to use their routes
             sse_app = mcp.sse_app()
-            http_app = mcp.streamable_http_app()
+            try:
+                http_app = mcp.streamable_http_app(json_response=True)
+            except TypeError:
+                http_app = mcp.streamable_http_app()
 
-            # Find the streamable_http_app handler (needed for POST /sse compatibility)
-            http_handler = None
-            for route in http_app.routes:
-                if (
-                    isinstance(route, Route)
-                    and route.path == mcp.settings.streamable_http_path
-                ):
-                    http_handler = route.endpoint
-                    break
-
-            # Create a combined routes list
+            # Create combined routes with proper deduplication
             combined_routes: list[BaseRoute] = []
+            added_routes: set[tuple[str, tuple[str, ...]]] = set()
 
-            # 1. Compatibility route: POST /sse -> StreamableHTTP
-            if http_handler:
-                combined_routes.append(
-                    Route(mcp.settings.sse_path, http_handler, methods=["POST"])
-                )
-                print(
-                    f"Added POST support to {mcp.settings.sse_path} "
-                    f"for Streamable HTTP compatibility"
-                )
+            def _route_key(route: Route) -> tuple[str, tuple[str, ...]]:
+                methods = tuple(sorted(route.methods or ["GET"]))
+                return (route.path, methods)
 
-            # 2. Regular routes
-            if "sse" in transports:
-                combined_routes.extend(sse_app.routes)
-
-            if "streamable-http" in transports:
-                for route in http_app.routes:
+            for app_routes in [
+                sse_app.routes if "sse" in transports else [],
+                http_app.routes if "streamable-http" in transports else [],
+            ]:
+                for route in app_routes:
                     if isinstance(route, Route):
-                        if not any(
-                            isinstance(r, Route) and r.path == route.path
-                            for r in combined_routes
-                        ):
+                        key = _route_key(route)
+                        if key not in added_routes:
                             combined_routes.append(route)
+                            added_routes.add(key)
                     else:
                         combined_routes.append(route)
 
-            # Create the Starlette app with combined routes
-            app = Starlette(
-                routes=combined_routes,
-                lifespan=http_app.router.lifespan_context,
-            )
+            # Combine lifespan contexts when both transports are active
+            sse_lifespan = sse_app.router.lifespan_context
+            http_lifespan = http_app.router.lifespan_context
+
+            from typing import Any
+
+            lifespan: Any
+            if "streamable-http" in transports and "sse" in transports:
+                from collections.abc import AsyncIterator
+                from contextlib import asynccontextmanager
+
+                @asynccontextmanager
+                async def _combined_lifespan(
+                    app: Starlette,
+                ) -> AsyncIterator[None]:
+                    async with sse_lifespan(app):
+                        async with http_lifespan(app):
+                            yield
+
+                lifespan = _combined_lifespan
+            elif "streamable-http" in transports:
+                lifespan = http_lifespan
+            else:
+                lifespan = sse_lifespan
+
+            # Create the Starlette app with combined routes and appropriate lifespan
+            app = Starlette(routes=combined_routes, lifespan=lifespan)
 
             # Add CORS middleware
             app.add_middleware(
@@ -182,12 +193,10 @@ def main() -> None:
                 f"Starting Shutil MCP Server with {' and '.join(transports)} transport"
             )
             if "sse" in transports:
-                print(
-                    f"SSE endpoint: http://{args.host}:{args.port}{mcp.settings.sse_path}"
-                )
+                print(f"SSE endpoint: http://{args.host}:{args.port}{sse_path}")
             if "streamable-http" in transports:
                 print(
-                    f"Streamable HTTP endpoint: http://{args.host}:{args.port}{mcp.settings.streamable_http_path}"
+                    f"Streamable HTTP endpoint: http://{args.host}:{args.port}{streamable_http_path}"
                 )
 
             uvicorn.run(app, host=args.host, port=args.port)
@@ -198,7 +207,7 @@ def main() -> None:
             )
             sys.exit(1)
     except KeyboardInterrupt:
-        print("\nServer stopped")
+        print("\nServer stopped", file=sys.stderr)
         sys.exit(0)
 
 
