@@ -1,5 +1,6 @@
 # shutil-mcp
 
+[![PyPI Version](https://img.shields.io/pypi/v/shutil-mcp.svg)](https://pypi.org/project/shutil-mcp/)
 [![M8ven Live Monitored](https://m8ven.ai/badge/mcp/cwt-shutil-mcp-1bs6po)](https://m8ven.ai/mcp/cwt-shutil-mcp-1bs6po)
 
 An MCP server providing asynchronous shell utilities using `aioshutil`.
