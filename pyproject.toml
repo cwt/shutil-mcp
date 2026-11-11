@@ -19,7 +19,7 @@ classifiers = [
 python = "^3.10"
 mcp = "^2.2.0"
 aioshutil = "^1.6"
-uvloop = {version = "^0.22.1", optional = true, markers = "sys_platform != 'win32'"}
+uvloop = {version = "^0.23.0", optional = true, markers = "sys_platform != 'win32'"}
 winloop = {version = "^0.6.4", optional = true, markers = "sys_platform == 'win32'"}
 pydantic = "^2.13.5"
 pydantic-settings = "^2.15.0"
@@ -33,7 +33,7 @@ pytest-asyncio = "^1.4.0"
 pytest-cov = "^7.1.0"
 pytest-xdist = "^3.8.0"
 black = "^26.5.1"
-ruff = "^0.16.9"
+ruff = "^0.17.4"
 mypy = "^2.3.1"
 
 [tool.poetry.scripts]
