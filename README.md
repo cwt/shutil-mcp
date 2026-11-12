@@ -1,6 +1,9 @@
 # shutil-mcp
 
+[![License](https://img.shields.io/pypi/l/shutil-mcp)](LICENSE)
+[![Python Compatibility](https://img.shields.io/pypi/pyversions/shutil-mcp)](#installation)
 [![PyPI Version](https://img.shields.io/pypi/v/shutil-mcp.svg)](https://pypi.org/project/shutil-mcp/)
+[![Ask DeepWiki](https://img.shields.io/badge/Ask-DeepWiki-blue)](https://deepwiki.com/cwt/shutil-mcp)<!-- [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/cwt/shutil-mcp) -->
 [![M8ven Live Monitored](https://m8ven.ai/badge/mcp/cwt-shutil-mcp-1bs6po)](https://m8ven.ai/mcp/cwt-shutil-mcp-1bs6po)
 
 An MCP server providing asynchronous shell utilities using `aioshutil`.
